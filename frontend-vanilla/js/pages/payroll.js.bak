@@ -1,0 +1,827 @@
+import { showToast } from '../components/toast.js';
+import { openModal } from '../components/modal.js';
+import { api } from '../api.js';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import html2pdf from 'html2pdf.js';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let state = {
+  payroll: [],
+  teachers: [],
+  subjects: [],
+  classrooms: [],
+  classSubjects: [],
+  periods: [],
+  academicPeriodId: null,
+  filterTeacher: '',
+  search: '',
+  modal: null,
+  loading: true,
+  tgMenuOpen: false,
+};
+
+let root = null;
+
+// ── Lookups ───────────────────────────────────────────────────────────────────
+
+function getTeacher(id)  { return state.teachers.find(x => x.id === +id) || null; }
+function getSubject(id)  { return state.subjects.find(x => x.id === +id) || null; }
+function getClassroom(id){ return state.classrooms.find(x => x.id === +id) || null; }
+
+function teacherName(id) {
+  const t = getTeacher(id);
+  return t ? `${t.last_name || ''} ${t.first_name || ''}`.trim() : '—';
+}
+function teacherInitial(id) { return teacherName(id).charAt(0).toUpperCase() || '?'; }
+function subjectName(id)    { return getSubject(id)?.subject_name ?? '—'; }
+
+function currentPeriodName() {
+  return state.periods.find(x => x.id === state.academicPeriodId)?.name ?? '';
+}
+
+// Find the period that covers today; fall back to first period
+function defaultPeriodId(periods) {
+  const today = new Date().toISOString().slice(0, 10);
+  const match = periods.find(p => p.start_date <= today && today <= p.end_date);
+  return match ? match.id : (periods[0]?.id ?? null);
+}
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+
+
+function filteredRows() {
+  if (!state.classroomFilter) return [];
+  return state.classSubjects?.filter(cs => cs.classroom === state.classroomFilter) || [];
+}
+
+function renderTable(rows) {
+  if (!state.classroomFilter) {
+    return `
+      <div style="background:#fff;border-radius:16px;padding:60px 20px;text-align:center;border:1px dashed var(--border);">
+        <div style="width:64px;height:64px;background:rgba(79,70,229,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i data-lucide="filter" style="width:32px;height:32px;color:var(--primary);"></i>
+        </div>
+        <h3 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:8px;">សូមជ្រើសរើសថ្នាក់រៀន</h3>
+        <p style="color:var(--text-secondary);font-size:0.9rem;max-width:300px;margin:0 auto;">សូមជ្រើសរើសថ្នាក់រៀនខាងលើ ដើម្បីបង្ហាញទិន្នន័យ និងបញ្ចូលប្រាក់បៀវត្ស។</p>
+      </div>
+    `;
+  }
+
+  if (!rows.length) {
+    return `
+      <div style="background:#fff;border-radius:16px;padding:60px 20px;text-align:center;border:1px dashed var(--border);">
+        <div style="width:64px;height:64px;background:rgba(79,70,229,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i data-lucide="inbox" style="width:32px;height:32px;color:var(--primary);"></i>
+        </div>
+        <h3 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:8px;">មិនមានទិន្នន័យ</h3>
+        <p style="color:var(--text-secondary);font-size:0.9rem;max-width:300px;margin:0 auto;">មិនទាន់មានការចាត់តាំងគ្រូ និងមុខវិជ្ជាសម្រាប់ថ្នាក់រៀននេះទេ។</p>
+      </div>
+    `;
+  }
+
+  // Calculate total across the loaded rows
+  let overallTotal = 0;
+
+  const trs = rows.map((cs, index) => {
+    const existing = state.payroll.find(r => r.class_subject === cs.id) || {};
+    const rate = existing.rate_per_hour || '';
+    const teaching = existing.total_teaching || '';
+    const amount = existing.total_amount || 0;
+    overallTotal += parseFloat(amount) || 0;
+    
+    return `
+    <tr style="border-bottom:1px solid var(--border);transition:background 0.2s;" class="payroll-row" data-cs-id="${cs.id}" data-payroll-id="${existing.id || ''}">
+      <td style="padding:12px 24px;text-align:center;font-weight:500;color:var(--text-secondary);">
+        ${index + 1}
+      </td>
+      <td style="padding:12px 24px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#818cf8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;box-shadow:0 4px 10px rgba(79,70,229,0.2);">
+            ${teacherInitial(cs.teacher)}
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:0.9rem;">${teacherName(cs.teacher)}</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">${getTeacher(cs.teacher)?.teacher_code || ''}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:12px 24px;">
+        <span class="badge success" style="font-size:0.75rem;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.1);color:var(--success);border:1px solid rgba(16,185,129,0.2);">${getSubjectName(cs.subject)}</span>
+      </td>
+      <td style="text-align:center;font-weight:600;color:var(--text-primary);padding:12px 24px;font-size:0.95rem;">
+        ${getSubject(cs.subject)?.total_hours || '—'}
+      </td>
+      <td style="text-align:center;padding:12px 24px;width:120px;">
+        <input type="number" class="form-input bulk-teaching" min="0" step="1" placeholder="0" value="${teaching}" style="padding:8px;height:36px;text-align:center;font-weight:600;" />
+      </td>
+      <td style="text-align:center;padding:12px 24px;width:140px;">
+        <input type="number" class="form-input bulk-rate" min="0" step="500" placeholder="0" value="${rate}" style="padding:8px;height:36px;text-align:center;font-weight:600;" />
+      </td>
+      <td style="text-align:right;padding:12px 24px;">
+        <span class="bulk-amount" style="font-weight:800;color:var(--success);font-size:1.05rem;">៛${fmt(amount)}</span>
+      </td>
+    </tr>
+  `});
+
+  return `
+    <div class="table-container glass-panel" style="background:rgba(255,255,255,0.7);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.5);box-shadow:0 12px 40px rgba(0,0,0,0.05);border-radius:16px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;white-space:nowrap;">
+        <thead>
+          <tr style="background:rgba(248,250,252,0.8);border-bottom:1px solid var(--border);">
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;width:60px;">ល.រ</th>
+            <th style="padding:16px 24px;text-align:left;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">គ្រូបង្រៀន</th>
+            <th style="padding:16px 24px;text-align:left;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">មុខវិជ្ជា</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">ម៉ោងសរុប</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">បង្រៀនជាក់ស្តែង</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">អត្រា/ម៉ោង (៛)</th>
+            <th style="padding:16px 24px;text-align:right;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">ប្រាក់សរុប (៛)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${trs.join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8fafc;">
+            <td colspan="6" style="padding:14px 24px;font-weight:700;font-size:0.85rem;color:var(--text-secondary);text-align:right;">
+              ប្រាក់សរុបទាំងអស់ (ដោយយើងគិតជាលុយរៀលប៉ុណ្ណោះ)
+            </td>
+            <td style="padding:14px 24px;text-align:right;">
+              <span id="overall-total" style="font-size:1.1rem;font-weight:800;color:var(--primary);">៛${fmt(overallTotal)}</span>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      
+      <div style="padding:20px 24px;background:#f8fafc;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:12px;">
+         <button class="btn btn-primary" id="btn-save-payroll" style="font-size:0.95rem;padding:10px 24px;">
+            <i data-lucide="save" style="width:16px;height:16px;"></i> រក្សាទុកទិន្នន័យ
+         </button>
+      </div>
+    </div>
+  `;
+}
+
+function update() {
+  if (!root) return;
+
+  if (state.loading) {
+    root.innerHTML = `
+      <style>@keyframes sk{0%{background-position:200% 0}to{background-position:-200% 0}}</style>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+        ${[0,1,2,3].map(() => `<div style="height:104px;border-radius:16px;background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:200%;animation:sk 1.4s ease infinite;"></div>`).join('')}
+      </div>
+      <div style="height:400px;border-radius:16px;background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:200%;animation:sk 1.4s ease infinite;"></div>`;
+    return;
+  }
+
+  const rows = filteredRows();
+
+  root.innerHTML = `
+    <div class="animate-fade-in">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+        <div>
+          <h1 class="page-title" style="margin-bottom:4px;">ការគ្រប់គ្រងប្រាក់បៀវត្ស</h1>
+          <p style="font-size:0.85rem;color:var(--text-secondary);">គ្រប់គ្រងប្រាក់ខែ ម៉ោងបង្រៀន និងបៀវត្សគ្រូ</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+
+          <!-- Classroom Filter -->
+          <div class="glass-panel" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;">
+            <i data-lucide="layers" style="width:15px;height:15px;color:var(--primary);flex-shrink:0;"></i>
+            <select id="classroom-filter" style="border:none;background:transparent;outline:none;font-family:inherit;font-size:0.875rem;font-weight:600;color:var(--text-primary);cursor:pointer;max-width:220px;">
+              <option value="">-- ជ្រើសរើសថ្នាក់រៀន --</option>
+              ${state.classrooms?.map(c => `<option value="${c.id}" ${state.classroomFilter === c.id ? 'selected' : ''}>${c.classroom_name}</option>`).join('') || ''}
+            </select>
+          </div>
+
+          <button class="btn" onclick="openTgConfig()" style="background:#fff;border:1px solid var(--border);color:var(--text-primary);" title="ការកំណត់ Telegram">
+            <i data-lucide="settings" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          </button>
+
+          <div style="position:relative;">
+            <button class="btn btn-primary" onclick="state.tgMenuOpen = !state.tgMenuOpen; update();" style="box-shadow:0 4px 12px rgba(79,70,229,0.3);">
+              <i data-lucide="send" style="width:16px;height:16px;"></i> ផ្ញើ Telegram
+              <i data-lucide="chevron-down" style="width:14px;height:14px;margin-left:4px;"></i>
+            </button>
+            ${state.tgMenuOpen ? `
+              <div class="vmodal-backdrop" onclick="state.tgMenuOpen=false; update();" style="background:transparent;z-index:90;"></div>
+              <div style="position:absolute;top:100%;right:0;margin-top:8px;background:#fff;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border:1px solid var(--border);min-width:200px;z-index:100;overflow:hidden;animation:fadeIn 0.2s ease;">
+                <button onclick="handleTelegram('image')" style="width:100%;text-align:left;padding:12px 16px;background:none;border:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;font-size:0.9rem;transition:background 0.2s;" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='none'">
+                  <i data-lucide="image" style="width:16px;height:16px;color:var(--primary);"></i> ជាទម្រង់រូបភាព
+                </button>
+                <button onclick="handleTelegram('pdf')" style="width:100%;text-align:left;padding:12px 16px;background:none;border:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;font-size:0.9rem;transition:background 0.2s;" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='none'">
+                  <i data-lucide="file-text" style="width:16px;height:16px;color:var(--danger);"></i> ជាទម្រង់ PDF
+                </button>
+                <button onclick="handleTelegram('excel')" style="width:100%;text-align:left;padding:12px 16px;background:none;border:none;display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;font-size:0.9rem;transition:background 0.2s;" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='none'">
+                  <i data-lucide="table" style="width:16px;height:16px;color:var(--success);"></i> ជាទម្រង់ Excel
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Table -->
+      ${renderTable(rows)}
+
+    </div>
+  `;
+
+  if (window.lucide) window.lucide.createIcons();
+if (window.lucide) window.lucide.createIcons();
+  wrap.querySelector('[data-a="close"]').onclick  = () => h.close();
+  wrap.querySelector('[data-a="cancel"]').onclick = () => h.close();
+  wrap.querySelector('[data-a="save"]').onclick   = () => {
+    const token  = wrap.querySelector('[data-f="token"]').value.trim();
+    const chatId = wrap.querySelector('[data-f="chatId"]').value.trim();
+    const errEl  = wrap.querySelector('[data-err]');
+    if (!token || !chatId) { errEl.textContent = 'សូមបញ្ចូល Token និង Chat ID'; errEl.style.display = 'block'; return; }
+    localStorage.setItem('tgConfig', JSON.stringify({ token, chatId }));
+    showToast('បានរក្សាទុកការកំណត់ Telegram', 'success');
+    h.close();
+  };
+}
+
+async function buildPrintEl(rows) {
+  const el = document.createElement('div');
+  el.style.cssText = 'font-family:Battambang,sans-serif;padding:28px;background:#fff;width:820px;color:#1f2937;position:fixed;top:-9999px;left:-9999px;';
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #4f46e5;">
+      <div>
+        <h2 style="font-size:1.2rem;font-weight:800;color:#4f46e5;margin:0 0 3px;">របាយការណ៍ប្រាក់បៀវត្ស</h2>
+        <p style="font-size:0.8rem;color:#6b7280;margin:0;">${currentPeriodName()} · ${new Date().toLocaleDateString('km-KH')}</p>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:1.4rem;font-weight:800;color:#10b981;">៛${fmt(totalPayout(rows))}</div>
+        <div style="font-size:0.75rem;color:#6b7280;">ប្រាក់សរុប · ${rows.length} នាក់</div>
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+      <thead>
+        <tr style="background:#4f46e5;color:#fff;">
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:center;width:36px;">ល.រ</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:left;">គ្រូបង្រៀន</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:left;">មុខវិជ្ជា</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:center;">ម៉ោងសរុប</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:center;">ចំនួនបង្រៀន</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:center;">អត្រា/ម៉ោង (៛)</th>
+          <th style="padding:9px 12px;border:1px solid #4338ca;text-align:right;">ប្រាក់សរុប (៛)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r, i) => {
+          const cs = state.classSubjects?.find(x => x.id === r.class_subject);
+          const tId = cs ? cs.teacher : null;
+          const sId = cs ? cs.subject : null;
+          return `
+          <tr style="background:${i % 2 ? '#f8fafc' : '#fff'};">
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:center;">${i + 1}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;">${teacherName(tId)}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;">${subjectName(sId)}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:center;">${getSubject(sId)?.total_hours || '—'}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:center;">${fmt(r.total_teaching, 0)}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:center;">៛${fmt(r.rate_per_hour)}</td>
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#10b981;">៛${fmt(r.total_amount)}</td>
+          </tr>`}).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background:#ecfdf5;font-weight:800;">
+          <td colspan="6" style="padding:10px 12px;border:1px solid #d1fae5;text-align:right;color:#374151;">ប្រាក់សរុបទាំងអស់</td>
+          <td style="padding:10px 12px;border:1px solid #d1fae5;text-align:right;color:#10b981;font-size:1rem;">៛${fmt(totalPayout(rows))}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+async function getPdfBlob(rows) {
+  const el = await buildPrintEl(rows);
+  try {
+    return await html2pdf().set({
+      margin: 8, filename: 'payroll.pdf',
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+    }).from(el).output('blob');
+  } finally { el.remove(); }
+}
+
+async function getImageBlob(rows) {
+  const el = await buildPrintEl(rows);
+  try {
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff' });
+    return await new Promise(res => canvas.toBlob(res, 'image/png'));
+  } finally { el.remove(); }
+}
+
+function getExcelBlob(rows) {
+  const data = rows.map((r, i) => {
+    const cs = state.classSubjects?.find(x => x.id === r.class_subject);
+    const tId = cs ? cs.teacher : null;
+    const sId = cs ? cs.subject : null;
+    return {
+      'ល.រ': i + 1,
+      'គ្រូបង្រៀន': teacherName(tId),
+      'មុខវិជ្ជា': subjectName(sId),
+      'ម៉ោងសរុប': +(getSubject(sId)?.total_hours || 0),
+      'ចំនួនបង្រៀន': +r.total_teaching,
+      'អត្រា/ម៉ោង (៛)': +r.rate_per_hour,
+      'ប្រាក់សរុប (៛)': +r.total_amount,
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{ wch: 5 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Payroll');
+  return new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+async function handleTelegram(kind) {
+  const cfg = JSON.parse(localStorage.getItem('tgConfig') || '{}');
+  if (!cfg.token || !cfg.chatId) { showToast('សូមកំណត់ Telegram Bot ជាមុនសិន', 'warning'); openTgConfig(); return; }
+  const rows = filteredRows();
+  if (!rows.length) { showToast('គ្មានទិន្នន័យដើម្បីផ្ញើ', 'warning'); return; }
+  state.tgMenuOpen = false; update();
+  showToast('កំពុងផ្ញើ...', 'info');
+  const cap = `💰 បៀវត្ស · ${currentPeriodName()} · ${rows.length} នាក់ · ៛${fmt(totalPayout(rows))}`;
+  try {
+    let blob, filename, isPhoto = false;
+    if (kind === 'pdf')        { blob = await getPdfBlob(rows);   filename = `payroll_${currentPeriodName()}.pdf`; }
+    else if (kind === 'excel') { blob = getExcelBlob(rows);       filename = `payroll_${currentPeriodName()}.xlsx`; }
+    else                       { blob = await getImageBlob(rows); filename = `payroll_${currentPeriodName()}.png`; isPhoto = true; }
+    await tgSendFile({ blob, filename, isPhoto, caption: cap, cfg });
+    showToast('បានផ្ញើទៅ Telegram ដោយជោគជ័យ', 'success');
+  } catch { showToast('បរាជ័យក្នុងការផ្ញើ Telegram', 'danger'); }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+
+function getClassroomName(id) {
+  const c = state.classrooms?.find(x => x.id === parseInt(id));
+  return c ? c.class_name : '—';
+}
+
+
+function renderModal() {
+  if (!state.modal) return '';
+  const isEdit = state.modal.mode === 'edit';
+  const row    = isEdit ? (state.payroll.find(r => r.id === state.modal.id) || {}) : {};
+  
+  // For edit mode, find the class_subject object
+  let initialClassroom = '';
+  let initialTeacher = '';
+  let initialSubject = '';
+  let initialTotalHours = '';
+  
+  if (isEdit && row.class_subject) {
+      const cs = state.classSubjects?.find(x => x.id === row.class_subject);
+      if (cs) {
+          initialClassroom = cs.classroom;
+          initialTeacher = cs.teacher;
+          initialSubject = cs.subject;
+          const s = state.subjects?.find(x => x.id === cs.subject);
+          if (s) initialTotalHours = s.total_hours;
+      }
+  }
+
+  // Generate classroom options
+  const classroomOptions = state.classrooms?.map(c => {
+      const selected = initialClassroom === c.id ? 'selected' : '';
+      return `<option value="${c.id}" ${selected}>${c.class_name}</option>`;
+  }).join('') || '';
+
+  // Generate teacher options (filtered by initialClassroom if editing)
+  let teacherOptions = '';
+  if (isEdit && initialClassroom) {
+      const filteredCs = state.classSubjects?.filter(cs => cs.classroom === initialClassroom) || [];
+      const teacherIds = [...new Set(filteredCs.map(cs => cs.teacher))];
+      teacherOptions = teacherIds.map(tid => {
+          const tName = teacherName(tid);
+          const selected = initialTeacher === tid ? 'selected' : '';
+          return `<option value="${tid}" ${selected}>${tName}</option>`;
+      }).join('');
+  }
+
+  // Generate subject options (filtered by initialClassroom and initialTeacher if editing)
+  let subjectOptions = '';
+  if (isEdit && initialClassroom && initialTeacher) {
+      const filteredCs = state.classSubjects?.filter(cs => cs.classroom === initialClassroom && cs.teacher === initialTeacher) || [];
+      const subjectIds = [...new Set(filteredCs.map(cs => cs.subject))];
+      subjectOptions = subjectIds.map(sid => {
+          const sName = subjectName(sid);
+          const selected = initialSubject === sid ? 'selected' : '';
+          return `<option value="${sid}" ${selected}>${sName}</option>`;
+      }).join('');
+  }
+
+  return `
+    <div class="vmodal-backdrop" data-action="close-modal" style="z-index:1000;"></div>
+    <div class="vmodal-panel animate-scale-in" style="z-index:1001;max-width:600px;">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="${isEdit ? 'pencil' : 'plus'}" style="width:16px;height:16px;color:var(--primary);"></i>
+          </div>
+          <div>
+            <h3 style="font-size:1rem;font-weight:700;margin:0;">${isEdit ? 'កែប្រែបៀវត្ស' : 'បន្ថែមបៀវត្សថ្មី'}</h3>
+            <span style="font-size:0.75rem;color:var(--text-secondary);margin:0;">ដោយយើងគិតជាលុយរៀលប៉ុណ្ណោះ</span>
+          </div>
+        </div>
+        <button class="icon-btn" data-action="close-modal"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;padding-top:4px;">
+
+        ${isEdit ? `
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);">
+          <input id="modal-unlock" type="checkbox" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;" />
+          <span style="font-size:0.85rem;color:var(--warning);font-weight:600;">ផ្លាស់ប្តូរការចាត់តាំង (ថ្នាក់ / គ្រូ / មុខវិជ្ជា)</span>
+        </label>` : ''}
+
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">ថ្នាក់រៀន <span style="color:var(--danger)">*</span></label>
+          <select id="modal-classroom" class="form-input" style="appearance:auto;" ${isEdit ? 'disabled' : ''}>
+            <option value="">-- ជ្រើសរើសថ្នាក់រៀន --</option>
+            ${classroomOptions}
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">គ្រូបង្រៀន <span style="color:var(--danger)">*</span></label>
+            <select id="modal-teacher" class="form-input" style="appearance:auto;" disabled>
+              <option value="">-- ជ្រើសរើសគ្រូ --</option>
+              ${teacherOptions}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">មុខវិជ្ជា <span style="color:var(--danger)">*</span></label>
+            <select id="modal-subject" class="form-input" style="appearance:auto;" disabled>
+              <option value="">-- ជ្រើសរើសមុខវិជ្ជា --</option>
+              ${subjectOptions}
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">ម៉ោងសរុប (មុខវិជ្ជា)</label>
+            <input id="modal-total-hours" class="form-input" type="text" readonly disabled placeholder="ស្វ័យប្រវត្តិ" value="${initialTotalHours}" style="background:var(--bg-muted);color:var(--text-secondary);" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">ចំនួនបង្រៀនជាក់ស្តែង <span style="color:var(--danger)">*</span></label>
+            <input id="modal-teaching" class="form-input" type="number" min="0" step="0.5" placeholder="0" value="${row.total_teaching ?? ''}" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">អត្រា/ម៉ោង (៛) <span style="color:var(--danger)">*</span></label>
+            <input id="modal-rate" class="form-input" type="number" min="0" step="100" placeholder="0" value="${row.rate_per_hour ?? ''}" />
+          </div>
+        </div>
+
+        ${isEdit && row.total_amount != null ? `
+          <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.85rem;color:var(--text-secondary);">ប្រាក់សរុប <span style="font-size:0.72rem;">(គណនាដោយ DB)</span></span>
+            <span style="font-size:1.15rem;font-weight:800;color:var(--success);">៛${fmt(row.total_amount)}</span>
+          </div>` : ''}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn" data-action="close-modal" style="border:1px solid var(--border);color:var(--text-secondary);">បោះបង់</button>
+        <button class="btn btn-primary" data-action="submit-modal">
+          <i data-lucide="${isEdit ? 'save' : 'plus'}" style="width:14px;height:14px;"></i>
+          ${isEdit ? 'រក្សាទុក' : 'បន្ថែម'}
+        </button>
+      </div>
+    </div>`;
+}
+
+
+
+function renderStatCards(rows) {
+  const total = totalPayout(rows);
+  const avg   = avgHours(rows);
+  const top   = topEarner(rows);
+
+  const cards = [
+    { label: 'ប្រាក់បៀវត្សសរុប', value: `$${fmt(total)}`,                       icon: 'landmark',    bg: 'var(--primary-light)',  fg: 'var(--primary)' },
+    { label: 'ចំនួនកំណត់ត្រា',    value: `${rows.length} កំណត់ត្រា`,              icon: 'file-text',   bg: 'rgba(16,185,129,0.12)', fg: 'var(--success)' },
+    { label: 'ម៉ោងជាមធ្យម',       value: `${avg.toFixed(1)} ម៉ោង`,               icon: 'clock',       bg: 'rgba(245,158,11,0.12)', fg: 'var(--warning)' },
+    { label: 'ប្រាក់ខ្ពស់បំផុត',  value: top ? `$${fmt(top.total_amount)}` : '—', sub: top ? teacherName(top.teacher) : '', icon: 'trending-up', bg: 'rgba(239,68,68,0.1)', fg: 'var(--danger)' },
+  ];
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+      ${cards.map(c => `
+        <div class="glass-panel" style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <span style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.6px;line-height:1.4;">${c.label}</span>
+            <div style="width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${c.bg};color:${c.fg};">
+              <i data-lucide="${c.icon}" style="width:18px;height:18px;"></i>
+            </div>
+          </div>
+          <div style="font-size:1.55rem;font-weight:800;color:var(--text-primary);line-height:1;">${c.value}</div>
+          ${c.sub ? `<div style="font-size:0.78rem;color:var(--text-secondary);">${c.sub}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderTgMenu() {
+  if (!state.tgMenuOpen) return '';
+  const items = [
+    { a: 'tg-pdf',   icon: 'file-text', label: 'PDF',    color: '#ef4444' },
+    { a: 'tg-excel', icon: 'table-2',   label: 'Excel',  color: '#10b981' },
+    { a: 'tg-image', icon: 'image',     label: 'រូបភាព', color: '#4f46e5' },
+  ];
+  return `
+    <div id="tg-menu" style="position:absolute;top:calc(100%+6px);right:0;z-index:300;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.12);min-width:170px;overflow:hidden;margin-top:6px;">
+      ${items.map(it => `
+        <button data-action="${it.a}" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:0.875rem;color:var(--text-primary);">
+          <i data-lucide="${it.icon}" style="width:15px;height:15px;color:${it.color};flex-shrink:0;"></i>${it.label}
+        </button>`).join('')}
+      <div style="height:1px;background:var(--border);margin:2px 0;"></div>
+      <button data-action="tg-config" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:0.85rem;color:var(--text-secondary);">
+        <i data-lucide="settings" style="width:14px;height:14px;flex-shrink:0;"></i>ការកំណត់
+      </button>
+    </div>`;
+}
+
+function renderTable(rows) {
+  if (!rows.length) {
+    return `
+      <div style="background:#fff;border-radius:16px;padding:60px 20px;text-align:center;border:1px dashed var(--border);">
+        <div style="width:64px;height:64px;background:rgba(79,70,229,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i data-lucide="inbox" style="width:32px;height:32px;color:var(--primary);"></i>
+        </div>
+        <h3 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:8px;">មិនមានទិន្នន័យ</h3>
+        <p style="color:var(--text-secondary);font-size:0.9rem;max-width:300px;margin:0 auto;">មិនទាន់មានទិន្នន័យប្រាក់បៀវត្សសម្រាប់ខែនេះទេ។ សូមចុច "បន្ថែមបៀវត្ស"។</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-container glass-panel" style="background:rgba(255,255,255,0.7);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.5);box-shadow:0 12px 40px rgba(0,0,0,0.05);border-radius:16px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;white-space:nowrap;">
+        <thead>
+          <tr style="background:rgba(248,250,252,0.8);border-bottom:1px solid var(--border);">
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;width:60px;">ល.រ</th>
+            <th style="padding:16px 24px;text-align:left;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">គ្រូបង្រៀន</th>
+            <th style="padding:16px 24px;text-align:left;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">មុខវិជ្ជា</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">ម៉ោងសរុប</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">បង្រៀនជាក់ស្តែង</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">អត្រា/ម៉ោង (៛)</th>
+            <th style="padding:16px 24px;text-align:right;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">ប្រាក់សរុប (៛)</th>
+            <th style="padding:16px 24px;text-align:center;font-weight:600;color:var(--text-secondary);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">សកម្មភាព</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row, index) => {
+            const cs = state.classSubjects?.find(x => x.id === row.class_subject);
+            let teacherId = null, subjectId = null;
+            if (cs) {
+                teacherId = cs.teacher;
+                subjectId = cs.subject;
+            }
+            return `
+            <tr style="border-bottom:1px solid var(--border);transition:background 0.2s;" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='none'">
+              <td style="padding:12px 24px;text-align:center;font-weight:500;color:var(--text-secondary);">
+                ${index + 1}
+              </td>
+              <td style="padding:12px 24px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#818cf8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;box-shadow:0 4px 10px rgba(79,70,229,0.2);">
+                    ${teacherInitial(teacherId)}
+                  </div>
+                  <div>
+                    <div style="font-weight:600;font-size:0.9rem;">${teacherName(teacherId)}</div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);">${getTeacher(teacherId)?.teacher_code || ''}</div>
+                  </div>
+                </div>
+              </td>
+              <td style="padding:12px 24px;">
+                <span class="badge success" style="font-size:0.75rem;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.1);color:var(--success);border:1px solid rgba(16,185,129,0.2);">${subjectName(subjectId)}</span>
+              </td>
+              <td style="text-align:center;font-weight:600;color:var(--text-primary);padding:12px 24px;font-size:0.95rem;">${getSubject(subjectId)?.total_hours || '—'}</td>
+              <td style="text-align:center;color:var(--text-secondary);padding:12px 24px;">${row.total_teaching}</td>
+              <td style="text-align:center;color:var(--text-secondary);padding:12px 24px;font-weight:500;">៛${fmt(row.rate_per_hour)}</td>
+              <td style="text-align:right;padding:12px 24px;">
+                <span style="font-weight:800;color:var(--success);font-size:1.05rem;">៛${fmt(row.total_amount)}</span>
+              </td>
+              <td style="text-align:center;padding:12px 24px;">
+                <div style="display:flex;gap:8px;justify-content:center;">
+                  <button class="icon-btn" data-action="edit-row" data-id="${row.id}" title="កែប្រែ"
+                    style="width:32px;height:32px;border-radius:8px;background:rgba(79,70,229,0.05);color:var(--primary);display:flex;align-items:center;justify-content:center;transition:all 0.2s;" onmouseover="this.style.background='var(--primary)';this.style.color='#fff';" onmouseout="this.style.background='rgba(79,70,229,0.05)';this.style.color='var(--primary)';">
+                    <i data-lucide="pencil" style="width:14px;height:14px;"></i>
+                  </button>
+                  <button class="icon-btn" data-action="delete-row" data-id="${row.id}" title="លុប"
+                    style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.05);color:var(--danger);display:flex;align-items:center;justify-content:center;transition:all 0.2s;" onmouseover="this.style.background='var(--danger)';this.style.color='#fff';" onmouseout="this.style.background='rgba(239,68,68,0.05)';this.style.color='var(--danger)';">
+                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;}).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8fafc;">
+            <td colspan="6" style="padding:14px 24px;font-weight:700;font-size:0.85rem;color:var(--text-secondary);text-align:right;">
+              ប្រាក់សរុបទាំងអស់
+            </td>
+            <td style="padding:14px 24px;text-align:right;">
+              <span style="font-size:1.1rem;font-weight:800;color:var(--primary);">៛${fmt(totalPayout(rows))}</span>
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+}
+
+function update() {
+  if (!root) return;
+
+  if (state.loading) {
+    root.innerHTML = `
+      <style>@keyframes sk{0%{background-position:200% 0}to{background-position:-200% 0}}</style>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+        ${[0,1,2,3].map(() => `<div style="height:104px;border-radius:16px;background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:200%;animation:sk 1.4s ease infinite;"></div>`).join('')}
+      </div>
+      <div style="height:400px;border-radius:16px;background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:200%;animation:sk 1.4s ease infinite;"></div>`;
+    return;
+  }
+
+  const rows      = filteredRows();
+  const teachers  = activeTeachers();
+  const hasFilter = state.filterTeacher || state.search;
+
+  root.innerHTML = `
+    <div class="animate-fade-in">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+        <div>
+          <h1 class="page-title" style="margin-bottom:4px;">ការគ្រប់គ្រងប្រាក់បៀវត្ស</h1>
+          <p style="font-size:0.85rem;color:var(--text-secondary);">គ្រប់គ្រងប្រាក់ខែ ម៉ោងបង្រៀន និងបៀវត្សគ្រូ</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+
+          <!-- Period selector -->
+          <div class="glass-panel" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;">
+            <i data-lucide="calendar" style="width:15px;height:15px;color:var(--primary);flex-shrink:0;"></i>
+            <select id="period-filter" style="border:none;background:transparent;outline:none;font-family:inherit;font-size:0.875rem;font-weight:600;color:var(--text-primary);cursor:pointer;max-width:220px;">
+              ${state.periods.map(p => `<option value="${p.id}" ${state.academicPeriodId == p.id ? 'selected' : ''}>${p.name} · ${p.period_type}</option>`).join('')}
+              ${!state.periods.length ? '<option value="">គ្មានរយៈពេល</option>' : ''}
+            </select>
+          </div>
+
+          <!-- Telegram -->
+          <div style="position:relative;">
+            <button data-action="tg-toggle" class="btn" style="border:1px solid #e2e8f0;color:var(--text-primary);background:#fff;gap:6px;padding:8px 14px;">
+              <i data-lucide="send" style="width:14px;height:14px;color:#229ED9;flex-shrink:0;"></i>
+              Telegram
+              <i data-lucide="chevron-down" style="width:12px;height:12px;flex-shrink:0;"></i>
+            </button>
+            ${renderTgMenu()}
+          </div>
+
+          <!-- Add -->
+          <button class="btn btn-primary" data-action="add-record" ${!state.academicPeriodId ? 'disabled' : ''} style="gap:6px;padding:8px 16px;">
+            <i data-lucide="plus" style="width:15px;height:15px;"></i>
+            បន្ថែម
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      ${renderStatCards(rows)}
+
+      <!-- Table Card -->
+      <div class="glass-panel animate-slide-up" style="overflow:hidden;padding:0;">
+
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <h2 style="font-size:1rem;font-weight:700;margin:0;">បញ្ជីបៀវត្ស</h2>
+              <p style="font-size:0.78rem;color:var(--text-secondary);margin:2px 0 0;">
+                ${currentPeriodName()}
+                ${rows.length !== state.payroll.length
+                  ? ` · <span style="color:var(--warning);font-weight:600;">បានត្រង ${rows.length}/${state.payroll.length}</span>`
+                  : ` · ${state.payroll.length} កំណត់ត្រា`}
+              </p>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:var(--success);"></div>
+              <span style="font-size:0.75rem;color:var(--text-secondary);">ភ្ជាប់ API</span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:7px;background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:7px 12px;flex:1;min-width:180px;max-width:240px;">
+              <i data-lucide="user" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0;"></i>
+              <select id="filter-teacher" style="border:none;outline:none;background:transparent;font-family:inherit;font-size:0.85rem;color:var(--text-primary);width:100%;cursor:pointer;">
+                <option value="">គ្រូទាំងអស់</option>
+                ${teachers.map(t => `<option value="${t.id}" ${state.filterTeacher == t.id ? 'selected' : ''}>${t.last_name || ''} ${t.first_name || ''}</option>`).join('')}
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:7px 12px;flex:2;min-width:180px;">
+              <i data-lucide="search" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0;"></i>
+              <input id="search-input" type="text" placeholder="ស្វែងរកគ្រូ ឬ មុខវិជ្ជា..."
+                value="${state.search}"
+                style="border:none;outline:none;background:transparent;font-family:inherit;font-size:0.85rem;color:var(--text-primary);width:100%;" />
+            </div>
+            ${hasFilter ? `
+              <button data-action="clear-filters" class="btn" style="border:1px solid var(--danger);color:var(--danger);background:rgba(239,68,68,0.05);padding:7px 12px;font-size:0.8rem;white-space:nowrap;flex-shrink:0;">
+                <i data-lucide="x-circle" style="width:13px;height:13px;"></i> លុបតម្រង
+              </button>` : ''}
+          </div>
+        </div>
+
+        ${renderTable(rows)}
+      </div>
+    </div>
+
+    ${renderModal()}`;
+
+  // ── Events ───────────────────────────────────────────────────────────────
+
+  root.querySelector('#period-filter')?.addEventListener('change', async e => {
+    state.academicPeriodId = +e.target.value;
+    state.loading = true; update();
+    await loadPayroll();
+    state.loading = false; update();
+  });
+
+  root.querySelector('#filter-teacher')?.addEventListener('change', e => {
+    state.filterTeacher = e.target.value; update();
+  });
+
+  root.querySelector('#search-input')?.addEventListener('input', e => {
+    state.search = e.target.value; update();
+    root.querySelector('#search-input')?.focus();
+  });
+
+  root.querySelector('[data-action="clear-filters"]')?.addEventListener('click', () => {
+    state.filterTeacher = ''; state.search = ''; update();
+  });
+
+  root.querySelectorAll('[data-action="add-record"]').forEach(b => b.addEventListener('click', openAddModal));
+  root.querySelectorAll('[data-action="edit-row"]').forEach(b =>
+    b.addEventListener('click', () => openEditModal(+b.dataset.id)));
+  root.querySelectorAll('[data-action="delete-row"]').forEach(b =>
+    b.addEventListener('click', () => deleteRecord(+b.dataset.id)));
+
+  root.querySelectorAll('[data-action="close-modal"]').forEach(b => b.addEventListener('click', closeModal));
+  root.querySelector('[data-action="submit-modal"]')?.addEventListener('click', submitModal);
+
+  // Unlock checkbox → toggle classroom/teacher/subject dropdowns
+  root.querySelector('#modal-unlock')?.addEventListener('change', e => {
+    const locked = !e.target.checked;
+    ['#modal-classroom', '#modal-teacher', '#modal-subject'].forEach(sel => {
+      const el = root.querySelector(sel);
+      if (el) el.disabled = locked;
+    });
+  });
+
+  // Classroom → cascade teacher/subject dropdowns
+  root.querySelector('#modal-classroom')?.addEventListener('change', e => {
+    const csEl = root.querySelector('#modal-class-subject');
+    if (!csEl) return;
+    const cid = e.target.value;
+    csEl.innerHTML = cid
+      ? csOptionsForClassroom(cid)
+      : '<option value="">-- ជ្រើសរើសថ្នាក់រៀនជាមុន --</option>';
+  });
+
+  root.querySelector('[data-action="tg-toggle"]')?.addEventListener('click', e => {
+    e.stopPropagation(); state.tgMenuOpen = !state.tgMenuOpen; update();
+  });
+  root.querySelector('[data-action="tg-pdf"]')?.addEventListener('click',    () => handleTelegram('pdf'));
+  root.querySelector('[data-action="tg-excel"]')?.addEventListener('click',  () => handleTelegram('excel'));
+  root.querySelector('[data-action="tg-image"]')?.addEventListener('click',  () => handleTelegram('image'));
+  root.querySelector('[data-action="tg-config"]')?.addEventListener('click', () => { state.tgMenuOpen = false; update(); openTgConfig(); });
+
+  if (state.tgMenuOpen) {
+    const close = e => {
+      if (!document.getElementById('tg-menu')?.contains(e.target)) {
+        state.tgMenuOpen = false;
+        document.removeEventListener('click', close);
+        update();
+      }
+    };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+export function render(container) { root = container; loadData(); }
+export function destroy()         { root = null; }

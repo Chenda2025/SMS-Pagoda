@@ -1,0 +1,44 @@
+# --- Python / Django ---
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+*.egg-info/
+db.sqlite3
+
+# Django secrets/config -- never commit real credentials
+.env
+*.env
+!.env.example
+
+# User-uploaded content -- runtime data, not source
+school_management/media/
+
+# --- Node / frontend ---
+node_modules/
+frontend-vanilla/dist/
+frontend-vanilla/node_modules/
+npm-debug.log*
+
+# --- Editor / OS ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Project-specific: large/archival, not source ---
+frontend_archive.zip
+archive_extracted/
+scratch/
+database_backups/*.sql
+
+# One-off migration/rewrite scripts left at the repo root from earlier ad-hoc
+# refactors -- not part of the app, kept locally for reference only. The
+# leading slash anchors these to the root only, so school_management/**/*.py
+# and frontend-vanilla/**/*.js are unaffected.
+# (Left untracked rather than deleted; remove this block if you'd rather
+# commit them for history.)
+/*.py
+/*.js
+trace.txt
+implementation_plan.md

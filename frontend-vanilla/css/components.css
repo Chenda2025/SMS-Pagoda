@@ -1,0 +1,127 @@
+/* Shared toast + modal styles, ported from the duplicated per-page CSS in the
+   React app (e.g. Subjects.jsx's .toast-container / .toast-* block). */
+
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 450px;
+  animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.toast.success { border-left-color: #10b981; }
+.toast.info { border-left-color: #4f46e5; }
+.toast.warning { border-left-color: #ef4444; }
+.toast.danger { border-left-color: #f59e0b; }
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(-20px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 480px) {
+  .toast { min-width: 0; max-width: calc(100vw - 48px); }
+  .toast-container { left: 24px; right: 24px; }
+}
+
+/* Modal / drawer overlay -- shared shape for add/edit forms,
+   and detail drawers (previously each page hand-rolled its own backdrop). */
+.vmodal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease;
+}
+
+.vmodal-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px 32px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (max-width: 640px) {
+  .vmodal-panel { width: calc(100vw - 32px); padding: 20px; max-height: 85vh; }
+}
+
+/* Drawer variant -- slides in from the right (detail views) */
+.vmodal-panel.vmodal-drawer {
+  top: 0;
+  left: auto;
+  right: 0;
+  transform: none;
+  height: 100vh;
+  max-height: 100vh;
+  width: 480px;
+  max-width: 100vw;
+  border-radius: 0;
+  border-top-left-radius: 0;
+  animation: slideDrawerIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (max-width: 640px) {
+  .vmodal-panel.vmodal-drawer { width: 100vw; }
+}
+
+@keyframes slideDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-secondary);
+  transition: color .15s;
+}
+.icon-btn:hover { color: var(--primary); }

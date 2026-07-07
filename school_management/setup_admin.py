@@ -1,0 +1,18 @@
+import os
+
+apps = ['core', 'students', 'attendance', 'scores', 'users', 'permissions']
+content = """from django.contrib import admin
+from django.apps import apps
+
+app = apps.get_app_config(__package__)
+
+for model_name, model in app.models.items():
+    try:
+        admin.site.register(model)
+    except admin.sites.AlreadyRegistered:
+        pass
+"""
+
+for app in apps:
+    with open(os.path.join(app, 'admin.py'), 'w') as f:
+        f.write(content)

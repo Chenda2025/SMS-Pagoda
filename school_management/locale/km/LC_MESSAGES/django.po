@@ -1,0 +1,52 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: SMS Pagoda 2026\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: km\n"
+
+msgid "This field is required."
+msgstr "វាលនេះត្រូវតែបញ្ចូល។"
+
+msgid "This field may not be blank."
+msgstr "វាលនេះមិនអាចទទេបានទេ។"
+
+msgid "This field may not be null."
+msgstr "វាលនេះមិនអាចគ្មានតម្លៃបានទេ។"
+
+msgid "Ensure this field has no more than %(max_length)d characters."
+msgstr "សូមធានាថាវាលនេះមានចំនួនតួអក្សរមិនលើសពី %(max_length)d។"
+
+msgid "A valid integer is required."
+msgstr "ត្រូវការលេខគត់ត្រឹមត្រូវ។"
+
+msgid "Enter a valid email address."
+msgstr "សូមបញ្ចូលអាសយដ្ឋានអ៊ីមែលត្រឹមត្រូវ។"
+
+msgid "object with %(slug_name)s=%(slug)s does not exist."
+msgstr "មិនមានទិន្នន័យដែលមាន %(slug_name)s=%(slug)s ទេ។"
+
+msgid "\"%(value)s\" is not a valid choice."
+msgstr "\"%(value)s\" មិនមែនជាជម្រើសត្រឹមត្រូវទេ។"
+
+msgid "Invalid pk \"%(pk_value)s\" - object does not exist."
+msgstr "លេខសម្គាល់ \"%(pk_value)s\" មិនត្រឹមត្រូវ - រកមិនឃើញទិន្នន័យនេះទេ។"
+
+msgid "This list may not be empty."
+msgstr "បញ្ជីនេះមិនអាចទទេបានទេ។"
+
+msgid "Must be a valid boolean."
+msgstr "ត្រូវតែជាតម្លៃពិត ឬ មិនពិត។"
+
+msgid "Datetime has wrong format."
+msgstr "ទម្រង់កាលបរិច្ឆេទ និងពេលវេលាមិនត្រឹមត្រូវ។"
+
+msgid "Date has wrong format."
+msgstr "ទម្រង់កាលបរិច្ឆេទមិនត្រឹមត្រូវ។"
+
+msgid "Invalid token."
+msgstr "តូខឹនមិនត្រឹមត្រូវ។"
+
+msgid "Authentication credentials were not provided."
+msgstr "មិនបានផ្តល់ព័ត៌មានសម្គាល់ខ្លួនទេ។"

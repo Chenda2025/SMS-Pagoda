@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <script>
+    async function testTg() {
+      const tgConfig = JSON.parse(localStorage.getItem('tgConfig') || '{}');
+      if (!tgConfig.token) return document.write('No config');
+      const blob = new Blob(['hello'], { type: 'text/plain' });
+      const fd = new FormData();
+      fd.append('chat_id', tgConfig.chatId);
+      fd.append('document', blob, 'test.txt');
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, { method: 'POST', body: fd });
+      const json = await res.json();
+      document.write(JSON.stringify(json));
+    }
+    testTg();
+  </script>
+</body>
+</html>
