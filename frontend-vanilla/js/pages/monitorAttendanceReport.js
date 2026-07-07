@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
 import { navigate } from '../router.js';
+import { apiOrigin } from '../api.js';
 import { withFocusPreserved, onLiveInput } from '../utils/dom.js';
 
 function toKhmerNumerals(numStr) {
@@ -50,13 +51,14 @@ let state = {
 
 async function loadData() {
   try {
+    const base = apiOrigin();
     const [studentsData, enrollmentsData, reportData, classroomsData, subjectsData, kutisData] = await Promise.all([
-      fetch('/api/students/list/').then(r => r.json()),
-      fetch('/api/students/enrollments/').then(r => r.json()),
-      fetch('/api/attendance/attendance/report-data/').then(r => r.json()),
-      fetch('/api/classrooms/').then(r => r.json()),
-      fetch('/api/subjects/').then(r => r.json()),
-      fetch('/api/kutis/').then(r => r.json()),
+      fetch(`${base}/api/students/list/`).then(r => r.json()),
+      fetch(`${base}/api/students/enrollments/`).then(r => r.json()),
+      fetch(`${base}/api/attendance/attendance/report-data/`).then(r => r.json()),
+      fetch(`${base}/api/classrooms/`).then(r => r.json()),
+      fetch(`${base}/api/subjects/`).then(r => r.json()),
+      fetch(`${base}/api/kutis/`).then(r => r.json()),
     ]);
 
     const classroomMap = {};
@@ -448,12 +450,11 @@ function renderPrintMode(filtered) {
 
   const btnPrint = root.querySelector('[data-action="print-browser"]');
   if (btnPrint) btnPrint.addEventListener('click', () => { window.print(); });
-  if (window.lucide) window.
   root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
     import('../router.js').then(m => m.navigate('/monitor-attendance'));
   });
 
-  lucide.createIcons();
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function update() {
@@ -621,7 +622,6 @@ function update() {
     </div>
   `;
 
-  root.querySelector('[data-action="back"]').addEventListener('click', () => navigate('/attendance'));
   const searchInput = root.querySelector('[data-f="search"]');
   onLiveInput(searchInput, () => { state = { ...state, searchQuery: searchInput.value, currentPage: 1 }; withFocusPreserved(root, update); });
   root.querySelector('[data-f="class"]').addEventListener('change', (e) => { state = { ...state, selectedClass: e.target.value, currentPage: 1 }; update(); });
@@ -639,7 +639,6 @@ function update() {
   const nextBtn = root.querySelector('[data-action="next-page"]');
   if (nextBtn) nextBtn.addEventListener('click', () => { state = { ...state, currentPage: Math.min(totalPages, safePage + 1) }; update(); });
 
-  if (window.lucide) window.
   root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
     import('../router.js').then(m => m.navigate('/monitor-attendance'));
   });

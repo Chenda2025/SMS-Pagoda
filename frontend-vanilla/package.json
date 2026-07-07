@@ -21,6 +21,7 @@
     "jspdf": "^4.2.1",
     "khmer-chhankitek-calendar": "^1.2.0",
     "lucide": "^0.469.0",
+    "serve": "^14.2.6",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

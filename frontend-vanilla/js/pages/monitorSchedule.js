@@ -3,6 +3,7 @@
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
 import mockData from '../data/scheduleStructure.json';
 import { getUser } from '../auth.js';
+import { apiOrigin } from '../api.js';
 import { createMonitorBottomNav } from '../components/monitorBottomNav.js';
 import { openMonitorAccountSheet } from '../components/monitorAccountSheet.js';
 
@@ -57,7 +58,7 @@ function getFixedClass() { return getUser()?.monitorInfo?.classroom_name || mock
 async function loadAllClassroomsAndSchedule() {
   state.allClassrooms = [];
   try {
-    const res = await fetch('/api/core/classrooms/');
+    const res = await fetch(`${apiOrigin()}/api/core/classrooms/`);
     state.allClassrooms = await res.json();
   } catch (err) {
     console.error('Error fetching all classrooms', err);
@@ -68,7 +69,7 @@ async function loadAllClassroomsAndSchedule() {
 async function loadSubstitutions() {
   const date = getDateForSelectedDay(state.selectedDay);
   try {
-    const res = await fetch(`/api/core/schedule-substitutions/substitute/?classroom_name=${encodeURIComponent(state.selectedClass)}&date=${date}`);
+    const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/?classroom_name=${encodeURIComponent(state.selectedClass)}&date=${date}`);
     if (res.ok) {
       state.substitutions = await res.json();
     } else {
@@ -102,13 +103,14 @@ async function loadSchedule() {
     const clsInfo = state.allClassrooms.find(c => c.class_name === state.selectedClass);
 
     // 2. Fetch required APIs
+    const base = apiOrigin();
     const [subjectsRes, teachersRes, classSubjectsRes, timeSlotsRes, timetableRes, academicYearsRes] = await Promise.all([
-      fetch('/api/core/subjects/').then(r => r.json()),
-      fetch('/api/users/teachers/').then(r => r.json()),
-      fetch('/api/core/class-subjects/').then(r => r.json()),
-      fetch('/api/core/time-slots/').then(r => r.json()),
-      fetch('/api/core/timetable/').then(r => r.json()),
-      fetch('/api/core/academic-years/').then(r => r.json())
+      fetch(`${base}/api/core/subjects/`).then(r => r.json()),
+      fetch(`${base}/api/users/teachers/`).then(r => r.json()),
+      fetch(`${base}/api/core/class-subjects/`).then(r => r.json()),
+      fetch(`${base}/api/core/time-slots/`).then(r => r.json()),
+      fetch(`${base}/api/core/timetable/`).then(r => r.json()),
+      fetch(`${base}/api/core/academic-years/`).then(r => r.json())
     ]);
 
     newData.allSubjects = subjectsRes || [];
@@ -392,7 +394,7 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
       };
 
       try {
-        const res = await fetch('/api/core/schedule-substitutions/substitute/', {
+        const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -427,7 +429,7 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
       };
 
       try {
-        const res = await fetch('/api/core/schedule-substitutions/substitute/', {
+        const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -469,7 +471,7 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
     };
 
     try {
-      const res = await fetch('/api/core/schedule-substitutions/substitute/', {
+      const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

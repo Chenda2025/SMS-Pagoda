@@ -7,6 +7,13 @@ import { getToken } from './auth.js';
 const NODE_PORT = 5000;
 const DJANGO_PORT = 8000;
 
+// Set at build time (Render static site env var) to the deployed Django
+// service's full origin, e.g. https://sms-pagoda-backend.onrender.com --
+// Render services are plain HTTPS with no custom port, unlike local dev
+// where the Django/Node backends run on fixed ports on the same host.
+// Unset locally, so dev keeps using the hardcoded-port behavior below.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 // Endpoints not yet migrated to Django -- stay on the Node backend, same as
 // djangoAdapter.js's bypass list.
 const NODE_ONLY_PREFIXES = [
@@ -20,8 +27,18 @@ function isNodeOnly(path) {
 }
 
 function backendBase(path) {
+  if (API_BASE_URL) return API_BASE_URL;
   const port = isNodeOnly(path) ? NODE_PORT : DJANGO_PORT;
   return `http://${window.location.hostname}:${port}`;
+}
+
+// For the handful of pages that still use raw fetch() with a relative
+// '/api/...' path instead of the api.get/post/etc. wrapper above -- those
+// only work locally because Vite's dev server proxies '/api' to Django.
+// There's no such proxy once frontend and backend are separate deployed
+// origins, so those call sites need this prefix too.
+export function apiOrigin() {
+  return API_BASE_URL || `http://${window.location.hostname}:${DJANGO_PORT}`;
 }
 
 // Path rewrites applied before hitting Django (mirrors djangoAdapter.js).

@@ -11,6 +11,7 @@ db.sqlite3
 .env
 *.env
 !.env.example
+school_management/staticfiles/
 
 # User-uploaded content -- runtime data, not source
 school_management/media/

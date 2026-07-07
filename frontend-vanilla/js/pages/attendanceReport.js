@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
 import { navigate } from '../router.js';
+import { apiOrigin } from '../api.js';
 import { withFocusPreserved, onLiveInput } from '../utils/dom.js';
 
 function toKhmerNumerals(numStr) {
@@ -41,13 +42,14 @@ let state = {
 
 async function loadData() {
   try {
+    const base = apiOrigin();
     const [studentsData, enrollmentsData, reportData, classroomsData, subjectsData, kutisData] = await Promise.all([
-      fetch('/api/students/list/').then(r => r.json()),
-      fetch('/api/students/enrollments/').then(r => r.json()),
-      fetch('/api/attendance/attendance/report-data/').then(r => r.json()),
-      fetch('/api/classrooms/').then(r => r.json()),
-      fetch('/api/subjects/').then(r => r.json()),
-      fetch('/api/kutis/').then(r => r.json()),
+      fetch(`${base}/api/students/list/`).then(r => r.json()),
+      fetch(`${base}/api/students/enrollments/`).then(r => r.json()),
+      fetch(`${base}/api/attendance/attendance/report-data/`).then(r => r.json()),
+      fetch(`${base}/api/classrooms/`).then(r => r.json()),
+      fetch(`${base}/api/subjects/`).then(r => r.json()),
+      fetch(`${base}/api/kutis/`).then(r => r.json()),
     ]);
 
     const classroomMap = {};
