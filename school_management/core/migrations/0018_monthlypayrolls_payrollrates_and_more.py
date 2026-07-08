@@ -12,39 +12,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='MonthlyPayrolls',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('total_hours', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True, verbose_name='ម៉ោងសរុប')),
-                ('total_teaching', models.DecimalField(decimal_places=2, max_digits=5, verbose_name='ចំនួនបង្រៀនសរុប')),
-                ('rate_per_hour', models.DecimalField(decimal_places=2, max_digits=10, verbose_name='ថ្លៃក្នុងមួយម៉ោង')),
-                ('total_amount', models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, verbose_name='ចំនួនទឹកប្រាក់សរុប')),
-                ('created_at', models.DateTimeField(auto_now_add=True, null=True, verbose_name='កាលបរិច្ឆេទបង្កើត')),
-                ('updated_at', models.DateTimeField(auto_now=True, null=True, verbose_name='កាលបរិច្ឆេទកែប្រែ')),
-            ],
-            options={
-                'verbose_name': 'កំណត់ត្រាបើកប្រាក់ខែប្រចាំខែ',
-                'verbose_name_plural': 'កំណត់ត្រាបើកប្រាក់ខែប្រចាំខែ',
-                'db_table': 'monthly_payrolls',
-                'managed': False,
-            },
-        ),
-        migrations.CreateModel(
-            name='PayrollRates',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('total_teaching', models.DecimalField(decimal_places=2, max_digits=5)),
-                ('rate_per_hour', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('note', models.TextField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
-                ('updated_at', models.DateTimeField(auto_now=True, null=True)),
-            ],
-            options={
-                'db_table': 'payroll_rates',
-                'managed': False,
-            },
-        ),
+
         migrations.AddField(
             model_name='schedulesubstitutions',
             name='original_teacher',

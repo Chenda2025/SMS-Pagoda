@@ -274,7 +274,6 @@ class MonthlyPayrolls(models.Model):
     updated_at = models.DateTimeField(auto_now=True, blank=True, null=True, verbose_name='កាលបរិច្ឆេទកែប្រែ')
 
     class Meta:
-        managed = False
         db_table = 'monthly_payrolls'
         verbose_name = 'កំណត់ត្រាបើកប្រាក់ខែប្រចាំខែ'
         verbose_name_plural = 'កំណត់ត្រាបើកប្រាក់ខែប្រចាំខែ'
@@ -488,5 +487,4 @@ class PayrollRates(models.Model):
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
     class Meta:
-        managed = False
         db_table = 'payroll_rates'
