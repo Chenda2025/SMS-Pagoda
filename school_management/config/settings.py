@@ -174,7 +174,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # different port than Django and needs CORS to reach it at all.
 _cors_origins_env = os.getenv('CORS_ALLOWED_ORIGINS', '').strip()
 if _cors_origins_env:
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
+    CORS_ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _cors_origins_env.split(',') if o.strip()]
     CORS_ALLOW_ALL_ORIGINS = False
 else:
     CORS_ALLOW_ALL_ORIGINS = True

@@ -12,7 +12,7 @@ const DJANGO_PORT = 8000;
 // Render services are plain HTTPS with no custom port, unlike local dev
 // where the Django/Node backends run on fixed ports on the same host.
 // Unset locally, so dev keeps using the hardcoded-port behavior below.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 // Endpoints not yet migrated to Django -- stay on the Node backend, same as
 // djangoAdapter.js's bypass list.
