@@ -13,7 +13,7 @@ import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import * as lucide from 'lucide';
-import { initRouter, setAdminRouteHandler } from './router.js?v=54';
+import { initRouter, setAdminRouteHandler } from './router.js';
 import { renderAdminShell } from './shell.js';
 
 // Exposed globally so shared components (toast.js, modal.js, etc.) and page
