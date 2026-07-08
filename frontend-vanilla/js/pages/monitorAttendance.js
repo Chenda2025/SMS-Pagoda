@@ -932,36 +932,36 @@ function update() {
           const teacherName = e.teacher ? `${e.teacher.last_name || ''} ${e.teacher.first_name || ''}`.trim() : null;
           return `
             <div data-action="select-slot" data-slot="${e.timeSlotId}" role="button" tabindex="0"
-              style="display:flex;flex-direction:column;border-radius:12px;border:2px solid ${isActive ? c.border : '#e5e7eb'};
+              style="display:flex;flex-direction:column;border-radius:10px;border:2px solid ${isActive ? c.border : '#e5e7eb'};
                 overflow:hidden;background:${isActive ? c.activeBg : '#fff'};cursor:pointer;
-                width:132px;min-width:112px;max-width:150px;
+                width:104px;min-width:92px;max-width:120px;
                 box-shadow:${isActive ? `0 4px 14px ${c.border}44` : '0 1px 5px rgba(0,0,0,0.06)'};
                 transition:all .18s;">
-              <div style="height:4px;background:${c.gradient};"></div>
-              <div style="padding:7px 9px 0;display:flex;align-items:center;justify-content:space-between;gap:4px;">
-                <span style="display:inline-flex;align-items:center;gap:3px;
+              <div style="height:3px;background:${c.gradient};"></div>
+              <div style="padding:5px 7px 0;display:flex;align-items:center;justify-content:space-between;gap:3px;">
+                <span style="display:inline-flex;align-items:center;gap:2px;
                   background:${isActive ? c.border : c.badgeBg};color:${isActive ? '#fff' : c.text};
-                  font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:9999px;white-space:nowrap;">
-                  <i data-lucide="clock" style="width:9px;height:9px;flex-shrink:0;"></i>
+                  font-size:0.56rem;font-weight:700;padding:1px 6px;border-radius:9999px;white-space:nowrap;">
+                  <i data-lucide="clock" style="width:8px;height:8px;flex-shrink:0;"></i>
                   ${fmtTime(e.slot.start_time.slice(0,5))}
                 </span>
                 ${e.isSubstituted ? `
                   <span style="display:inline-flex;align-items:center;
-                    background:#fef3c7;color:#d97706;font-size:0.55rem;font-weight:700;
-                    padding:2px 5px;border-radius:9999px;white-space:nowrap;">
-                    <i data-lucide="repeat-2" style="width:8px;height:8px;"></i>
+                    background:#fef3c7;color:#d97706;font-size:0.52rem;font-weight:700;
+                    padding:1px 4px;border-radius:9999px;white-space:nowrap;">
+                    <i data-lucide="repeat-2" style="width:7px;height:7px;"></i>
                   </span>` : ''}
               </div>
-              <div style="padding:6px 9px 4px;font-size:0.78rem;font-weight:800;color:${c.text};
-                line-height:1.25;min-height:36px;
+              <div style="padding:5px 7px 3px;font-size:0.7rem;font-weight:800;color:${c.text};
+                line-height:1.2;min-height:30px;
                 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
                 ${e.subject?.subject_name || '---'}
               </div>
-              <div style="padding:0 9px 6px;display:flex;align-items:center;gap:4px;
-                font-size:0.62rem;color:${c.text};font-weight:600;opacity:0.85;">
-                <span style="flex-shrink:0;width:16px;height:16px;border-radius:50%;
+              <div style="padding:0 7px 5px;display:flex;align-items:center;gap:3px;
+                font-size:0.58rem;color:${c.text};font-weight:600;opacity:0.85;">
+                <span style="flex-shrink:0;width:14px;height:14px;border-radius:50%;
                   background:${c.badgeBg};display:inline-flex;align-items:center;justify-content:center;">
-                  <i data-lucide="user" style="width:9px;height:9px;color:${c.text};"></i>
+                  <i data-lucide="user" style="width:8px;height:8px;color:${c.text};"></i>
                 </span>
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                   ${teacherName || `<span style="opacity:0.5;font-style:italic;">គ្មានគ្រូ</span>`}

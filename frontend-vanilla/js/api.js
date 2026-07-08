@@ -137,12 +137,54 @@ function translateResponseBody(path, data) {
   return formatted;
 }
 
+// Caches GET responses on-device (localStorage) so re-opening a page shows
+// data instantly instead of re-fetching. A write (POST/PUT/PATCH/DELETE)
+// clears the whole cache since we don't track which GETs it affects.
+const CACHE_PREFIX = 'apiCache:';
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCached(url) {
+  try {
+    const raw = localStorage.getItem(CACHE_PREFIX + url);
+    if (!raw) return undefined;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return undefined;
+    return data;
+  } catch {
+    return undefined;
+  }
+}
+
+function setCached(url, data) {
+  try {
+    localStorage.setItem(CACHE_PREFIX + url, JSON.stringify({ data, ts: Date.now() }));
+  } catch {
+    // localStorage full or unavailable (e.g. private browsing) -- skip caching.
+  }
+}
+
+function clearCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 async function request(method, path, body, opts = {}) {
   const resolved = isNodeOnly(path) ? { url: buildUrl(path) } : buildUrl(path);
   const url = resolved.url;
   const finalMethod = resolved.methodOverride || method;
   const isForm = body instanceof FormData;
   const sentBody = isForm ? body : (body ? translateRequestBody(path, body) : undefined);
+
+  if (finalMethod === 'GET' && !opts.noCache) {
+    const cached = getCached(url);
+    if (cached !== undefined) return { ok: true, status: 200, json: async () => cached, data: cached };
+  }
 
   const token = getToken();
   const headers = isForm ? (opts.headers || {}) : { 'Content-Type': 'application/json', ...(opts.headers || {}) };
@@ -163,6 +205,10 @@ async function request(method, path, body, opts = {}) {
 
   const data = await res.json().catch(() => null);
   const formatted = isNodeOnly(path) ? data : translateResponseBody(path, data);
+  if (res.ok) {
+    if (finalMethod === 'GET') setCached(url, formatted);
+    else clearCache();
+  }
   return { ok: res.ok, status: res.status, json: async () => formatted, data: formatted };
 }
 
