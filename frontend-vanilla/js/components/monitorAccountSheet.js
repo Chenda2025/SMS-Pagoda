@@ -3,6 +3,8 @@
 
 import { getUser, logout } from '../auth.js';
 import { navigate } from '../router.js';
+import { openModal } from './modal.js';
+import { showToast } from './toast.js';
 
 export function openMonitorAccountSheet() {
   const user = getUser();
@@ -45,16 +47,25 @@ export function openMonitorAccountSheet() {
         <div style="font-size:13px;color:#6b7280;">${monitorInfo.role || 'ប្រធានថ្នាក់'} • ថ្នាក់ ${monitorInfo.classroom_name || 'N/A'}</div>
       </div>
     </div>
+    <button data-action="configure-tg" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid #e5e7eb;background-color:#f9fafb;color:#374151;font-family:inherit;font-size:14px;font-weight:bold;cursor:pointer;margin-bottom:12px;">
+      <i data-lucide="send" style="width:18px;height:18px;color:#0088cc;"></i> ការកំណត់ Telegram Bot
+    </button>
     <button data-action="logout" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid #fecaca;background-color:#fef2f2;color:#ef4444;font-family:inherit;font-size:14px;font-weight:bold;cursor:pointer;">
       <i data-lucide="log-out" style="width:18px;height:18px"></i> ចាកចេញ
     </button>
   `;
 
-  function close() { overlay.remove(); }
+  function closeSheet() { overlay.remove(); }
 
-  overlay.addEventListener('click', close);
+  overlay.addEventListener('click', closeSheet);
   sheet.addEventListener('click', (e) => e.stopPropagation());
-  sheet.querySelector('[data-action="close"]').addEventListener('click', close);
+  sheet.querySelector('[data-action="close"]').addEventListener('click', closeSheet);
+  
+  sheet.querySelector('[data-action="configure-tg"]').addEventListener('click', () => {
+    closeSheet();
+    openTelegramConfigModal();
+  });
+
   sheet.querySelector('[data-action="logout"]').addEventListener('click', () => {
     logout();
     navigate('/login');
@@ -63,6 +74,53 @@ export function openMonitorAccountSheet() {
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   if (window.lucide) window.lucide.createIcons();
+}
 
-  return { close };
+function openTelegramConfigModal() {
+  const existing = JSON.parse(localStorage.getItem('tgConfig') || '{}');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="font-size:1.1rem;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;">
+        <i data-lucide="send" style="width:18px;height:18px;color:#0088cc;"></i>ការកំណត់ Telegram Bot
+      </h2>
+      <button data-action="close" style="background:none;border:none;cursor:pointer;padding:4px;">
+        <i data-lucide="x" style="width:18px;height:18px;color:var(--text-secondary);"></i>
+      </button>
+    </div>
+    <form style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">Bot Token <span style="color:#dc2626;">*</span></label>
+        <input type="text" data-f="token" class="form-input" placeholder="1234567890:ABC..." />
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">Chat ID <span style="color:#dc2626;">*</span></label>
+        <input type="text" data-f="chatId" class="form-input" placeholder="-100123456789" />
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">ឈ្មោះវត្ត <span style="font-weight:400;color:var(--text-muted);">(បង្ហាញក្នុងសារ)</span></label>
+        <input type="text" data-f="pagodaName" class="form-input" placeholder="ឧ. វត្តបទុមវតី..." />
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid var(--border);">
+        <button type="button" data-action="cancel" class="btn" style="border:1px solid var(--border);">បោះបង់</button>
+        <button type="submit" class="btn btn-primary">រក្សាទុក</button>
+      </div>
+    </form>`;
+  wrap.querySelector('[data-f="token"]').value = existing.token || '';
+  wrap.querySelector('[data-f="chatId"]').value = existing.chatId || '';
+  wrap.querySelector('[data-f="pagodaName"]').value = existing.pagodaName || '';
+  const handle = openModal(wrap);
+  if (window.lucide) window.lucide.createIcons();
+  wrap.querySelector('[data-action="close"]').addEventListener('click', () => handle.close());
+  wrap.querySelector('[data-action="cancel"]').addEventListener('click', () => handle.close());
+  wrap.querySelector('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const token      = wrap.querySelector('[data-f="token"]').value.trim();
+    const chatId     = wrap.querySelector('[data-f="chatId"]').value.trim();
+    const pagodaName = wrap.querySelector('[data-f="pagodaName"]').value.trim();
+    if (!token || !chatId) { showToast('សូមបញ្ចូល Token និង Chat ID', 'error'); return; }
+    localStorage.setItem('tgConfig', JSON.stringify({ token, chatId, pagodaName }));
+    showToast('បានរក្សាទុក Telegram Config ✅', 'success');
+    handle.close();
+  });
 }

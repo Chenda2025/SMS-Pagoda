@@ -4,8 +4,9 @@ import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
-import { navigate } from '../router.js';
-import { apiOrigin } from '../api.js';
+import { api, apiOrigin } from '../api.js';
+import { getUser } from '../auth.js';
+import { showToast } from '../components/toast.js';
 import { withFocusPreserved, onLiveInput } from '../utils/dom.js';
 
 function toKhmerNumerals(numStr) {
@@ -66,7 +67,7 @@ async function loadData() {
     const kutiMap = {};
     kutisData.forEach(k => { kutiMap[k.id] = k.kuti_name; });
     const enrollmentMap = {};
-    enrollmentsData.forEach(e => { enrollmentMap[e.student] = e.classroom; });
+    enrollmentsData.forEach(e => { enrollmentMap[e.student] = { classroom: e.classroom, academicYear: e.academic_year }; });
 
     state.classOptions = classroomsData.map(c => c.class_name).sort((a, b) => a.localeCompare(b, 'km'));
     state.subjectOptions = subjectsData.map(s => s.subject_name);
@@ -75,12 +76,14 @@ async function loadData() {
       .filter(s => s.status === 'active')
       .map(s => {
         const sData = reportData[s.id] || { absentDates: [], permissionDates: [], lateDates: [] };
-        const classroomId = enrollmentMap[s.id];
+        const enr = enrollmentMap[s.id];
         return {
           id: s.id,
           studentId: s.student_code || `S${String(s.id).padStart(3, '0')}`,
           name: `${s.last_name || ''} ${s.first_name || ''}`.trim(),
-          grade: classroomId ? (classroomMap[classroomId] || 'មិនមានថ្នាក់') : 'មិនមានថ្នាក់',
+          classroomId: enr?.classroom || null,
+          academicYearId: enr?.academicYear || null,
+          grade: enr?.classroom ? (classroomMap[enr.classroom] || 'មិនមានថ្នាក់') : 'មិនមានថ្នាក់',
           residence: s.monk_status === 'ព្រះសង្ឃ' ? 'ក្នុង' : 'ក្រៅ',
           kudi: s.kuti ? (kutiMap[s.kuti] || '-') : '-',
           subject: 'ទាំងអស់', bySubject: sData.bySubject || {},
@@ -227,9 +230,81 @@ function handleClearFilters() {
   update();
 }
 
+// This report has no session selector (unlike monitor-attendance), so a
+// status set from here applies to both morning and afternoon sessions for
+// the selected date -- matching how applyPermissionRange treats a
+// single-day permission elsewhere in the app.
+function currentDailyStatus(student) {
+  const date = state.selectedReportDate;
+  if (student.absentDates?.includes(date)) return 'absent';
+  if (student.permissionDates?.includes(date)) return 'permission';
+  if (student.lateDates?.includes(date)) return 'late';
+  return null;
+}
+
+async function applyDailyStatus(studentId, status) {
+  const student = state.studentDetails.find(s => String(s.id) === String(studentId));
+  const date = state.selectedReportDate;
+  const monitorInfo = getUser()?.monitorInfo;
+
+  try {
+    const [attRes, permRes] = await Promise.all([
+      api.get('/api/attendance/attendance/'),
+      api.get('/api/students/multiple-permissions/'),
+    ]);
+    const existingForDate = (attRes.data || []).filter(a => String(a.student) === String(studentId) && a.attendance_date === date);
+    const activePerm = (permRes.data || []).find(p => String(p.student) === String(studentId) && p.start_date <= date && p.end_date >= date);
+
+    if (status === 'clear') {
+      await Promise.all(existingForDate.map(a => api.del(`/api/attendance/attendance/${a.id}/`)));
+      if (activePerm && activePerm.start_date === activePerm.end_date) {
+        await api.del(`/api/students/multiple-permissions/${activePerm.id}/`);
+      }
+      showToast('បានដកចេញវិញ', 'success');
+    } else if (status === 'permission') {
+      if (activePerm && activePerm.start_date !== activePerm.end_date) {
+        showToast('សិស្សនេះមានច្បាប់ច្រើនថ្ងៃ សូមកែសម្រួលនៅទំព័រ "វត្តមានសិស្ស"', 'warning');
+        return;
+      }
+      if (!activePerm) {
+        await Promise.all(['morning', 'afternoon'].map(sess => {
+          const existing = existingForDate.find(a => a.session === sess);
+          return existing
+            ? api.patch(`/api/attendance/attendance/${existing.id}/`, { status: 'permission' })
+            : api.post('/api/attendance/attendance/', {
+                student: studentId, classroom: student?.classroomId, academic_year: student?.academicYearId,
+                attendance_date: date, session: sess, subject: null, status: 'permission',
+                recorded_by_monitor: monitorInfo?.student_id ?? null,
+              });
+        }));
+        await api.post('/api/students/multiple-permissions/', { student: studentId, reason: '', start_date: date, end_date: date, reminder_sent: false });
+      }
+      showToast('បានកត់ត្រាវត្តមានរួចរាល់', 'success');
+    } else {
+      await Promise.all(['morning', 'afternoon'].map(sess => {
+        const existing = existingForDate.find(a => a.session === sess);
+        return existing
+          ? api.patch(`/api/attendance/attendance/${existing.id}/`, { status })
+          : api.post('/api/attendance/attendance/', {
+              student: studentId, classroom: student?.classroomId, academic_year: student?.academicYearId,
+              attendance_date: date, session: sess, subject: null, status,
+              recorded_by_monitor: monitorInfo?.student_id ?? null,
+            });
+      }));
+      showToast('បានកត់ត្រាវត្តមានរួចរាល់', 'success');
+    }
+
+    state.reportStatusMenuFor = null;
+    await loadData();
+  } catch (err) {
+    console.error('Failed to update attendance from report:', err);
+    showToast('បរាជ័យក្នុងការកត់ត្រា', 'error');
+  }
+}
+
 async function handleSendTelegram(type = 'image') {
   const tgConfig = JSON.parse(localStorage.getItem('tgConfig') || '{}');
-  if (!tgConfig.token || !tgConfig.chatId) { alert('សូមកំណត់ Telegram Bot និង Group ID ជាមុនសិន នៅក្នុងទំព័រ "វត្តមានសិស្ស"!'); return; }
+  if (!tgConfig.token || !tgConfig.chatId) { alert('សូមកំណត់ Telegram Bot និង Group ID ជាមុនសិន (ចូលទៅកាន់ "គណនី" > "ការកំណត់ Telegram Bot")!'); return; }
   state = { ...state, isSendingTg: true };
   update();
   try {
@@ -450,9 +525,7 @@ function renderPrintMode(filtered) {
 
   const btnPrint = root.querySelector('[data-action="print-browser"]');
   if (btnPrint) btnPrint.addEventListener('click', () => { window.print(); });
-  root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-    import('../router.js').then(m => m.navigate('/monitor-attendance'));
-  });
+  root.querySelector('[data-action="back"]')?.addEventListener('click', () => window.history.back());
 
   if (window.lucide) window.lucide.createIcons();
 }
@@ -474,9 +547,82 @@ function update() {
   const safePage = Math.min(state.currentPage, totalPages);
   const paginated = filtered.slice((safePage - 1) * state.itemsPerPage, safePage * state.itemsPerPage);
 
+  const REPORT_TYPE_LABELS = { all: 'ទាំងអស់', daily: 'ថ្ងៃ', monthly: 'ខែ', tri1: 'ត្រីមាសទី១', tri2: 'ត្រីមាសទី២', sem1: 'ឆមាសទី១', sem2: 'ឆមាសទី២' };
+  const DAILY_STATUS_OPTIONS = [
+    { value: 'absent', label: 'អវត្តមាន(ឥតច្បាប់)', color: '#dc2626', icon: 'circle-x' },
+    { value: 'permission', label: 'ឈប់មានច្បាប់', color: '#ea580c', icon: 'file-check' },
+    { value: 'late', label: 'យឺត', color: '#f59e0b', icon: 'clock' },
+  ];
+
+  function statusBadges(student) {
+    const badges = [];
+    if (student.totalPermission > 0) badges.push(`<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:999px;font-weight:700;font-size:0.72rem;background:rgba(217,119,6,0.12);color:#d97706;">ច្បាប់ ${toKhmerNumerals(student.totalPermission)}</span>`);
+    if (student.totalAbsent > 0) badges.push(`<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:999px;font-weight:700;font-size:0.72rem;background:rgba(239,68,68,0.12);color:#ef4444;">អវត្តមាន ${toKhmerNumerals(student.totalAbsent)}</span>`);
+    if (student.totalLate > 0) badges.push(`<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:999px;font-weight:700;font-size:0.72rem;background:rgba(14,165,233,0.12);color:#0ea5e9;">យឺត ${toKhmerNumerals(student.totalLate)}</span>`);
+    return badges.length ? badges.join('') : `<span style="font-size:0.72rem;color:var(--text-muted);">មិនមានកំណត់ត្រា</span>`;
+  }
+
+  function statusActionIcons(student) {
+    if (state.listReportType !== 'daily') return '';
+    const dailyStatus = currentDailyStatus(student);
+    return `
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        <div style="position:relative;flex-shrink:0;">
+          <button data-action="toggle-daily-status-menu" data-student="${student.id}" title="ប្តូរស្ថានភាព"
+            style="width:30px;height:30px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <i data-lucide="repeat" style="width:13px;height:13px;pointer-events:none;"></i>
+          </button>
+          ${state.reportStatusMenuFor === String(student.id) ? `
+            <div data-role="daily-status-menu" style="position:absolute;top:calc(100% + 4px);right:0;z-index:30;background:#fff;border-radius:10px;padding:6px;box-shadow:0 8px 20px rgba(0,0,0,0.15);border:1px solid #f3f4f6;display:flex;gap:4px;white-space:nowrap;">
+              ${DAILY_STATUS_OPTIONS.map(o => `
+                <button data-action="apply-daily-status" data-student="${student.id}" data-status="${o.value}" title="${o.label}"
+                  style="width:30px;height:30px;border-radius:8px;border:1.5px solid ${dailyStatus === o.value ? o.color : 'var(--border)'};
+                    background:${dailyStatus === o.value ? o.color : '#fff'};color:${dailyStatus === o.value ? '#fff' : o.color};
+                    display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+                  <i data-lucide="${o.icon}" style="width:13px;height:13px;pointer-events:none;"></i>
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+        <button data-action="apply-daily-status" data-student="${student.id}" data-status="clear" title="សម្អាត/ដកចេញ"
+          style="width:30px;height:30px;border-radius:8px;border:1.5px solid #fecaca;background:#fff;color:#ef4444;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+          <i data-lucide="trash-2" style="width:13px;height:13px;pointer-events:none;"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  function studentCard(student, index) {
+    const stripe = student.totalAbsent > 0 ? '#ef4444' : student.totalPermission > 0 ? '#d97706' : student.totalLate > 0 ? '#0ea5e9' : '#16a34a';
+    return `
+      <div style="background:#fff;border-radius:12px;padding:12px 14px;border:1px solid var(--border);border-left:4px solid ${stripe};display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:0.92rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${toKhmerNumerals((safePage - 1) * state.itemsPerPage + index + 1)}. ${student.name}</div>
+            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">${student.studentId} &middot; ${(student.grade || state.selectedClass).replace('ថ្នាក់ទី ', 'ថ្នាក់ទី ')}${student.subject !== 'ទាំងអស់' ? ` &middot; ${student.subject}` : ''}</div>
+          </div>
+          <div style="text-align:right;font-size:0.68rem;color:var(--text-muted);flex-shrink:0;">${student.residence}${student.kudi !== '-' ? ` &middot; ${student.kudi}` : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:space-between;align-items:center;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${statusBadges(student)}</div>
+          ${statusActionIcons(student)}
+        </div>
+        ${(student.permissionDates?.length > 0 || student.absentDates?.length > 0 || student.lateDates?.length > 0) ? `
+          <div style="font-size:0.72rem;color:var(--text-secondary);line-height:1.6;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;">
+            ${student.permissionDates?.length > 0 ? `<div><span style="color:#d97706;font-weight:600;">ច្បាប់៖</span> ${formatDatesKhmer(student.permissionDates)}</div>` : ''}
+            ${student.absentDates?.length > 0 ? `<div><span style="color:#ef4444;font-weight:600;">អវត្តមាន៖</span> ${formatDatesKhmer(student.absentDates)}</div>` : ''}
+            ${student.lateDates?.length > 0 ? `<div><span style="color:#0ea5e9;font-weight:600;">យឺត៖</span> ${formatDatesKhmer(student.lateDates)}</div>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
   root.innerHTML = `
-    <div class="animate-fade-in" style="padding-bottom:60px;">
-      <div style="background-color:#4f46e5;background-image:linear-gradient(135deg, #4f46e5, #6366f1);color:white;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom-left-radius:24px;border-bottom-right-radius:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);margin-bottom:16px;">
+    <div style="min-height:100vh;background:var(--bg-main);display:flex;justify-content:center;">
+    <div class="animate-fade-in" style="width:100%;max-width:480px;display:flex;flex-direction:column;padding-bottom:60px;">
+      <div style="background-color:#4f46e5;background-image:linear-gradient(135deg, #4f46e5, #6366f1);color:white;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom-left-radius:24px;border-bottom-right-radius:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
         <div style="width:40px;height:40px;flex-shrink:0;background-color:white;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
           <img src="/logo.jpg" alt="School Logo" style="width:100%;height:100%;object-fit:contain;" />
         </div>
@@ -489,148 +635,158 @@ function update() {
         </div>
       </div>
 
-      <div style="padding:0 16px 16px;display:flex;align-items:center;gap:12px;">
+      <div style="padding:16px 16px 0;display:flex;align-items:center;gap:12px;">
         <button data-action="back" style="background:white;border:1px solid #e5e7eb;color:#374151;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,0.05);">←</button>
-        <div>
-          <div style="font-size:16px;font-weight:bold;color:#111827;">${getReportTitle()}</div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:16px;font-weight:bold;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${getReportTitle()}</div>
           <div style="font-size:12px;color:#6b7280;">ទិដ្ឋភាពទូទៅនៃស្ថិតិវត្តមានសិស្ស</div>
         </div>
       </div>
 
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 18px;margin-bottom:24px;">
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;flex:1;min-width:220px;">
-          <i data-lucide="search" style="width:16px;height:16px;color:var(--text-muted)"></i>
-          <input type="text" data-f="search" placeholder="ស្វែងរកតាមឈ្មោះ ឬ អត្តលេខ..." value="${state.searchQuery}" style="border:none;outline:none;background:transparent;width:100%;font-family:inherit;font-size:0.9rem;color:var(--text-primary);" />
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;">
-          <i data-lucide="users" style="width:16px;height:16px;color:var(--primary)"></i>
-          <select data-f="class" style="border:none;background:transparent;outline:none;font-family:inherit;font-weight:600;color:var(--text-primary);cursor:pointer;">
-            <option value="ទាំងអស់" ${state.selectedClass === 'ទាំងអស់' ? 'selected' : ''}>ទាំងអស់ថ្នាក់</option>
-            ${state.classOptions.map(name => `<option value="${name}" ${state.selectedClass === name ? 'selected' : ''}>${name}</option>`).join('')}
-          </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;">
-          <i data-lucide="book-open" style="width:16px;height:16px;color:var(--primary)"></i>
-          <select data-f="subject" style="border:none;background:transparent;outline:none;font-family:inherit;font-weight:600;color:var(--text-primary);cursor:pointer;">
-            <option value="ទាំងអស់" ${state.selectedSubject === 'ទាំងអស់' ? 'selected' : ''}>គ្រប់មុខវិជ្ជា</option>
-            ${state.subjectOptions.map(name => `<option value="${name}" ${state.selectedSubject === name ? 'selected' : ''}>${name}</option>`).join('')}
-          </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;">
-          <i data-lucide="calendar" style="width:16px;height:16px;color:var(--primary)"></i>
-          <input type="date" data-f="report-date" value="${state.selectedReportDate}" style="border:none;background:transparent;outline:none;font-family:inherit;font-weight:600;color:var(--text-primary);cursor:pointer;" />
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;">
-          <i data-lucide="calendar" style="width:16px;height:16px;color:var(--primary)"></i>
-          <select data-f="report-type" style="border:none;background:transparent;outline:none;font-family:inherit;font-weight:600;color:var(--text-primary);cursor:pointer;">
-            ${['all', 'daily', 'monthly', 'tri1', 'tri2', 'sem1', 'sem2'].map(v => `<option value="${v}" ${state.listReportType === v ? 'selected' : ''}>${{ all: 'ទាំងអស់', daily: 'ថ្ងៃ', monthly: 'ខែ', tri1: 'ត្រីមាសទី១', tri2: 'ត្រីមាសទី២', sem1: 'ឆមាសទី១', sem2: 'ឆមាសទី២' }[v]}</option>`).join('')}
-          </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:9px 14px;">
-          <i data-lucide="filter" style="width:16px;height:16px;color:var(--primary)"></i>
-          <select data-f="filter-status" style="border:none;background:transparent;outline:none;font-family:inherit;font-weight:600;color:var(--text-primary);cursor:pointer;">
-            <option value="all" ${state.filterStatus === 'all' ? 'selected' : ''}>ទាំងអស់</option>
-            <option value="permission" ${state.filterStatus === 'permission' ? 'selected' : ''}>ច្បាប់</option>
-            <option value="absent" ${state.filterStatus === 'absent' ? 'selected' : ''}>អវត្តមាន</option>
-          </select>
-        </div>
-        <button data-action="clear-filters" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;font-weight:600;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;cursor:pointer;font-size:0.9rem;"><i data-lucide="x" style="width:16px;height:16px"></i> សម្អាត</button>
-      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:20px;margin-bottom:24px;">
-        ${[
-          { icon: 'check-circle-2', bg: 'rgba(16,185,129,0.1)', color: '#10b981', label: 'អត្រាវត្តមាន', value: `${toKhmerNumerals(dynamicStats.attendanceRate)}%` },
-          { icon: 'alert-triangle', bg: 'rgba(239,68,68,0.1)', color: '#ef4444', label: 'អវត្តមានសរុប', value: `${toKhmerNumerals(totalSummary.absent)} ថ្ងៃ` },
-          { icon: 'calendar', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', label: 'ច្បាប់សរុប', value: `${toKhmerNumerals(totalSummary.permission)} ថ្ងៃ` },
-          { icon: 'clock', bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'យឺតសរុប', value: `${toKhmerNumerals(totalSummary.late)} ដង` },
-        ].map(c => `
-          <div style="background:#fff;border-radius:16px;padding:20px;display:flex;align-items:center;gap:16px;border:1px solid var(--border);">
-            <div style="width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${c.bg};color:${c.color};"><i data-lucide="${c.icon}" style="width:26px;height:26px"></i></div>
-            <div><p style="margin:0 0 4px 0;color:var(--text-secondary);font-size:0.85rem;font-weight:600;">${c.label}</p><h3 style="margin:0;font-size:1.7rem;font-weight:800;color:var(--text-primary);">${c.value}</h3></div>
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          <div style="position:relative;flex:1;min-width:0;">
+            <i data-lucide="search" style="position:absolute;left:10px;top:11px;width:16px;height:16px;color:var(--text-muted);"></i>
+            <input type="text" data-f="search" placeholder="ឈ្មោះ ឬ អត្តលេខ..." value="${state.searchQuery}" class="form-input" style="padding-left:34px;width:100%;" />
           </div>
-        `).join('')}
-      </div>
+          <div style="position:relative;flex-shrink:0;">
+            <button data-action="toggle-filters" title="តម្រង"
+              style="position:relative;width:38px;height:38px;border-radius:8px;border:1.5px solid ${state.showFilters ? 'var(--primary)' : 'var(--border)'};background:${state.showFilters ? 'var(--primary-light)' : 'white'};cursor:pointer;display:flex;align-items:center;justify-content:center;color:${state.showFilters ? 'var(--primary)' : '#6b7280'};">
+              <i data-lucide="sliders-horizontal" style="width:16px;height:16px;"></i>
+            </button>
+            ${state.showFilters ? `
+              <div data-role="filter-panel" style="position:absolute;top:calc(100% + 8px);right:0;z-index:20;width:260px;background:white;border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,0.12);border:1px solid #f3f4f6;display:flex;flex-direction:column;gap:12px;">
+                <div>
+                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">ថ្នាក់</div>
+                  <select data-f="class" class="form-input" style="width:100%;">
+                    <option value="ទាំងអស់" ${state.selectedClass === 'ទាំងអស់' ? 'selected' : ''}>ទាំងអស់ថ្នាក់</option>
+                    ${state.classOptions.map(name => `<option value="${name}" ${state.selectedClass === name ? 'selected' : ''}>${name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">មុខវិជ្ជា</div>
+                  <select data-f="subject" class="form-input" style="width:100%;">
+                    <option value="ទាំងអស់" ${state.selectedSubject === 'ទាំងអស់' ? 'selected' : ''}>គ្រប់មុខវិជ្ជា</option>
+                    ${state.subjectOptions.map(name => `<option value="${name}" ${state.selectedSubject === name ? 'selected' : ''}>${name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">កាលបរិច្ឆេទ</div>
+                  <input type="date" data-f="report-date" value="${state.selectedReportDate}" class="form-input" style="width:100%;" />
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">រយៈពេលរបាយការណ៍</div>
+                  <select data-f="report-type" class="form-input" style="width:100%;">
+                    ${['all', 'daily', 'monthly', 'tri1', 'tri2', 'sem1', 'sem2'].map(v => `<option value="${v}" ${state.listReportType === v ? 'selected' : ''}>${REPORT_TYPE_LABELS[v]}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">ស្ថានភាព</div>
+                  <select data-f="filter-status" class="form-input" style="width:100%;">
+                    <option value="all" ${state.filterStatus === 'all' ? 'selected' : ''}>ទាំងអស់</option>
+                    <option value="permission" ${state.filterStatus === 'permission' ? 'selected' : ''}>ច្បាប់</option>
+                    <option value="absent" ${state.filterStatus === 'absent' ? 'selected' : ''}>អវត្តមាន</option>
+                  </select>
+                </div>
+                <button data-action="clear-filters" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:8px;font-weight:600;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;cursor:pointer;font-size:0.85rem;"><i data-lucide="x" style="width:14px;height:14px"></i> សម្អាតតម្រង</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
 
-      <div class="glass-panel" style="padding:24px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-          <h3 style="font-size:1.1rem;font-weight:700;margin:0;color:var(--text-primary);">បញ្ជីវត្តមានសិស្ស</h3>
-          <button data-action="export-telegram" ${state.isSendingTg ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;border-radius:8px;font-weight:600;background:#0ea5e9;color:#fff;border:none;cursor:${state.isSendingTg ? 'not-allowed' : 'pointer'};opacity:${state.isSendingTg ? 0.7 : 1};">
-            <i data-lucide="send" style="width:16px;height:16px"></i>
-            ${state.isSendingTg ? 'កំពុងផ្ញើ...' : 'Telegram'}
-          </button>
-        </div>
-        <div style="overflow-x:auto;border-radius:14px;border:1px solid var(--border);">
-          <table style="width:100%;border-collapse:collapse;white-space:nowrap;">
-            <thead><tr style="background:#f8fafc;">
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">ល.រ</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">ឈ្មោះសិស្ស</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">ថ្នាក់</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">វត្តស្នាក់នៅ</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">កុដិ</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">មុខវិជ្ជា</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">ច្បាប់ (ថ្ងៃ)</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">អវត្តមាន (ថ្ងៃ)</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">យឺត (ដង)</th>
-              <th style="padding:14px 16px;font-size:0.78rem;font-weight:700;color:var(--text-secondary);border-bottom:2px solid var(--border);">កាលបរិច្ឆេទបញ្ជាក់</th>
-            </tr></thead>
-            <tbody>
-              ${filtered.length === 0 ? `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--text-secondary);">មិនមានទិន្នន័យសម្រាប់ជម្រើសនេះទេ</td></tr>` : paginated.map((student, index) => `
-                <tr>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${toKhmerNumerals((safePage - 1) * state.itemsPerPage + index + 1)}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:1rem;">${student.name}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${(student.grade || state.selectedClass).replace('ថ្នាក់ទី ', '')}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.residence}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.kudi}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.subject}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.totalPermission > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:4px 10px;border-radius:999px;font-weight:700;font-size:0.85rem;background:rgba(217,119,6,0.12);color:#d97706;">${toKhmerNumerals(student.totalPermission)}</span>` : '-'}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.totalAbsent > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:4px 10px;border-radius:999px;font-weight:700;font-size:0.85rem;background:rgba(239,68,68,0.12);color:#ef4444;">${toKhmerNumerals(student.totalAbsent)}</span>` : '-'}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);">${student.totalLate > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:4px 10px;border-radius:999px;font-weight:700;font-size:0.85rem;background:rgba(14,165,233,0.12);color:#0ea5e9;">${toKhmerNumerals(student.totalLate)}</span>` : '-'}</td>
-                  <td style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:0.85rem;">
-                    ${student.permissionDates?.length > 0 ? `<div style="display:inline-flex;padding:3px 10px;border-radius:999px;font-size:0.78rem;font-weight:600;margin:2px 4px 2px 0;background:rgba(217,119,6,0.1);color:#d97706;">ច្បាប់៖ ${formatDatesKhmer(student.permissionDates)}</div>` : ''}
-                    ${student.absentDates?.length > 0 ? `<div style="display:inline-flex;padding:3px 10px;border-radius:999px;font-size:0.78rem;font-weight:600;margin:2px 4px 2px 0;background:rgba(239,68,68,0.1);color:#ef4444;">អវត្តមាន៖ ${formatDatesKhmer(student.absentDates)}</div>` : ''}
-                    ${(!student.permissionDates?.length && !student.absentDates?.length) ? '-' : ''}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-            <tfoot><tr style="background:#f8fafc;border-top:2px solid var(--border);font-weight:700;">
-              <td colspan="7" style="padding:16px;text-align:right;color:var(--text-primary);">សរុបរួម៖</td>
-              <td style="padding:16px;color:#d97706;">${totalSummary.permission > 0 ? `${toKhmerNumerals(totalSummary.permission)} ថ្ងៃ` : '-'}</td>
-              <td style="padding:16px;color:#ef4444;">${totalSummary.absent > 0 ? `${toKhmerNumerals(totalSummary.absent)} ថ្ងៃ` : '-'}</td>
-              <td style="padding:16px;color:#0ea5e9;">${totalSummary.late > 0 ? `${toKhmerNumerals(totalSummary.late)} ដង` : '-'}</td>
-              <td></td>
-            </tr></tfoot>
-          </table>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-top:1px solid var(--border);flex-wrap:wrap;gap:16px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:14px;color:var(--text-secondary);">បង្ហាញ</span>
-            <select data-f="items-per-page" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);outline:none;background:#fff;">
-              ${[10, 20, 50, 100].map(n => `<option value="${n}" ${state.itemsPerPage === n ? 'selected' : ''}>${n}</option>`).join('')}
-            </select>
-            <span style="font-size:14px;color:var(--text-secondary);">ជួរ</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:16px;">
-            <span style="font-size:14px;color:var(--text-secondary);">ទំព័រ ${toKhmerNumerals(safePage)} នៃ ${toKhmerNumerals(totalPages)}</span>
-            <div style="display:flex;gap:8px;">
-              <button data-action="prev-page" ${safePage === 1 ? 'disabled' : ''} style="padding:6px 12px;border:1px solid var(--border);background:${safePage === 1 ? '#f1f5f9' : '#fff'};color:${safePage === 1 ? '#94a3b8' : 'var(--text-primary)'};border-radius:6px;cursor:${safePage === 1 ? 'not-allowed' : 'pointer'};">ថយក្រោយ</button>
-              <button data-action="next-page" ${safePage === totalPages ? 'disabled' : ''} style="padding:6px 12px;border:1px solid var(--border);background:${safePage === totalPages ? '#f1f5f9' : '#fff'};color:${safePage === totalPages ? '#94a3b8' : 'var(--text-primary)'};border-radius:6px;cursor:${safePage === totalPages ? 'not-allowed' : 'pointer'};">បន្ទាប់</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${[
+            { icon: 'check-circle-2', bg: 'rgba(16,185,129,0.1)', color: '#10b981', label: 'អត្រាវត្តមាន', value: `${toKhmerNumerals(dynamicStats.attendanceRate)}%` },
+            { icon: 'alert-triangle', bg: 'rgba(239,68,68,0.1)', color: '#ef4444', label: 'អវត្តមានសរុប', value: `${toKhmerNumerals(totalSummary.absent)} ថ្ងៃ` },
+            { icon: 'calendar', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', label: 'ច្បាប់សរុប', value: `${toKhmerNumerals(totalSummary.permission)} ថ្ងៃ` },
+            { icon: 'clock', bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'យឺតសរុប', value: `${toKhmerNumerals(totalSummary.late)} ដង` },
+          ].map(c => `
+            <div style="background:#fff;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--border);">
+              <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${c.bg};color:${c.color};"><i data-lucide="${c.icon}" style="width:18px;height:18px"></i></div>
+              <div><p style="margin:0 0 2px 0;color:var(--text-secondary);font-size:0.72rem;font-weight:600;">${c.label}</p><h3 style="margin:0;font-size:1.2rem;font-weight:800;color:var(--text-primary);">${c.value}</h3></div>
             </div>
+          `).join('')}
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+            <h3 style="font-size:0.95rem;font-weight:700;margin:0;color:var(--text-primary);">បញ្ជីវត្តមានសិស្ស</h3>
+            <button data-action="export-telegram" ${state.isSendingTg ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 12px;border-radius:8px;font-weight:600;background:#0ea5e9;color:#fff;border:none;cursor:${state.isSendingTg ? 'not-allowed' : 'pointer'};opacity:${state.isSendingTg ? 0.7 : 1};font-size:0.8rem;flex-shrink:0;">
+              <i data-lucide="send" style="width:14px;height:14px"></i>
+              ${state.isSendingTg ? 'កំពុងផ្ញើ...' : 'នាំចេញ/Telegram'}
+            </button>
           </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${filtered.length === 0
+              ? `<div style="text-align:center;padding:32px 20px;color:var(--text-secondary);background:#fff;border-radius:12px;border:1px solid var(--border);">មិនមានទិន្នន័យសម្រាប់ជម្រើសនេះទេ</div>`
+              : paginated.map((student, index) => studentCard(student, index)).join('')}
+          </div>
+
+          ${filtered.length > 0 ? `
+            <div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:700;color:var(--text-primary);">
+                <span>សរុបរួម៖</span>
+                <span style="display:flex;gap:10px;">
+                  <span style="color:#d97706;">ច្បាប់ ${totalSummary.permission > 0 ? toKhmerNumerals(totalSummary.permission) : '-'}</span>
+                  <span style="color:#ef4444;">អវត្តមាន ${totalSummary.absent > 0 ? toKhmerNumerals(totalSummary.absent) : '-'}</span>
+                  <span style="color:#0ea5e9;">យឺត ${totalSummary.late > 0 ? toKhmerNumerals(totalSummary.late) : '-'}</span>
+                </span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px solid var(--border);padding-top:10px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:12px;color:var(--text-secondary);">បង្ហាញ</span>
+                  <select data-f="items-per-page" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);outline:none;background:#fff;font-size:12px;">
+                    ${[10, 20, 50, 100].map(n => `<option value="${n}" ${state.itemsPerPage === n ? 'selected' : ''}>${n}</option>`).join('')}
+                  </select>
+                  <span style="font-size:12px;color:var(--text-secondary);">ជួរ</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span style="font-size:12px;color:var(--text-secondary);">ទំព័រ ${toKhmerNumerals(safePage)}/${toKhmerNumerals(totalPages)}</span>
+                  <div style="display:flex;gap:6px;">
+                    <button data-action="prev-page" ${safePage === 1 ? 'disabled' : ''} style="padding:5px 10px;border:1px solid var(--border);background:${safePage === 1 ? '#f1f5f9' : '#fff'};color:${safePage === 1 ? '#94a3b8' : 'var(--text-primary)'};border-radius:6px;cursor:${safePage === 1 ? 'not-allowed' : 'pointer'};font-size:12px;">ថយក្រោយ</button>
+                    <button data-action="next-page" ${safePage === totalPages ? 'disabled' : ''} style="padding:5px 10px;border:1px solid var(--border);background:${safePage === totalPages ? '#f1f5f9' : '#fff'};color:${safePage === totalPages ? '#94a3b8' : 'var(--text-primary)'};border-radius:6px;cursor:${safePage === totalPages ? 'not-allowed' : 'pointer'};font-size:12px;">បន្ទាប់</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
         </div>
       </div>
+    </div>
     </div>
   `;
 
   const searchInput = root.querySelector('[data-f="search"]');
   onLiveInput(searchInput, () => { state = { ...state, searchQuery: searchInput.value, currentPage: 1 }; withFocusPreserved(root, update); });
-  root.querySelector('[data-f="class"]').addEventListener('change', (e) => { state = { ...state, selectedClass: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-f="subject"]').addEventListener('change', (e) => { state = { ...state, selectedSubject: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-f="report-date"]').addEventListener('change', (e) => { state = { ...state, selectedReportDate: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-f="report-type"]').addEventListener('change', (e) => { state = { ...state, listReportType: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-f="filter-status"]').addEventListener('change', (e) => { state = { ...state, filterStatus: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-action="clear-filters"]').addEventListener('click', handleClearFilters);
+  root.querySelector('[data-action="toggle-filters"]')?.addEventListener('click', () => { state = { ...state, showFilters: !state.showFilters }; update(); });
+  root.querySelector('[data-f="class"]')?.addEventListener('change', (e) => { state = { ...state, selectedClass: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-f="subject"]')?.addEventListener('change', (e) => { state = { ...state, selectedSubject: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-f="report-date"]')?.addEventListener('change', (e) => { state = { ...state, selectedReportDate: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-f="report-type"]')?.addEventListener('change', (e) => { state = { ...state, listReportType: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-f="filter-status"]')?.addEventListener('change', (e) => { state = { ...state, filterStatus: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-action="clear-filters"]')?.addEventListener('click', handleClearFilters);
   root.querySelector('[data-action="export-telegram"]').addEventListener('click', () => { state = { ...state, isTablePrintMode: true }; update(); });
+
+  root.querySelectorAll('[data-action="toggle-daily-status-menu"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const studentId = btn.dataset.student;
+      state.reportStatusMenuFor = state.reportStatusMenuFor === studentId ? null : studentId;
+      update();
+    });
+  });
+  root.querySelectorAll('[data-action="apply-daily-status"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const studentId = btn.dataset.student;
+      let status = btn.dataset.status;
+      const student = state.studentDetails.find(s => String(s.id) === String(studentId));
+      const current = student ? currentDailyStatus(student) : null;
+      if (status !== 'clear' && current === status) status = 'clear';
+      applyDailyStatus(studentId, status);
+    });
+  });
 
   const itemsPerPageSel = root.querySelector('[data-f="items-per-page"]');
   if (itemsPerPageSel) itemsPerPageSel.addEventListener('change', (e) => { state = { ...state, itemsPerPage: Number(e.target.value), currentPage: 1 }; update(); });
@@ -639,16 +795,14 @@ function update() {
   const nextBtn = root.querySelector('[data-action="next-page"]');
   if (nextBtn) nextBtn.addEventListener('click', () => { state = { ...state, currentPage: Math.min(totalPages, safePage + 1) }; update(); });
 
-  root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-    import('../router.js').then(m => m.navigate('/monitor-attendance'));
-  });
+  root.querySelector('[data-action="back"]')?.addEventListener('click', () => window.history.back());
 
   lucide.createIcons();
 }
 
 export function render(container) {
   root = container;
-  state = { studentDetails: [], isLoading: true, classOptions: [], subjectOptions: [], listReportType: 'daily', filterStatus: 'all', isTablePrintMode: false, selectedClass: 'ទាំងអស់', selectedReportDate: new Date().toISOString().split('T')[0], selectedSubject: 'ទាំងអស់', isSendingTg: false, currentPage: 1, itemsPerPage: 10, searchQuery: '' };
+  state = { studentDetails: [], isLoading: true, classOptions: [], subjectOptions: [], listReportType: 'daily', filterStatus: 'all', isTablePrintMode: false, selectedClass: 'ទាំងអស់', selectedReportDate: new Date().toISOString().split('T')[0], selectedSubject: 'ទាំងអស់', isSendingTg: false, currentPage: 1, itemsPerPage: 10, searchQuery: '', showFilters: false, reportStatusMenuFor: null };
   update();
   loadData();
 }

@@ -66,7 +66,7 @@ const SESSION_LABELS = { morning: 'ព្រឹក', afternoon: 'រសៀល' }
 // True when the stored session value (English or Khmer) matches a target English session key.
 function sessMatches(stored, target) {
   return String(stored) === String(target) ||
-         String(stored) === (SESSION_LABELS[target] || '');
+    String(stored) === (SESSION_LABELS[target] || '');
 }
 
 function getCurrentSession() {
@@ -195,10 +195,10 @@ function pickDefaultSessionAndTimeSlot(preferredTimeSlot) {
 }
 
 const STATUS_OPTIONS = [
-  { value: 'absent',     label: 'អវត្តមាន(ឥតច្បាប់)', color: '#dc2626', icon: 'circle-x' },
-  { value: 'permission', label: 'ឈប់មានច្បាប់',      color: '#ea580c', icon: 'file-check' },
-  { value: 'late',       label: 'យឺត',               color: '#f59e0b', icon: 'clock' },
-  { value: 'dropout',    label: 'សិស្សឈប់រៀន',        color: '#7c3aed', icon: 'user-minus' }
+  { value: 'absent', label: 'អវត្តមាន(ឥតច្បាប់)', color: '#dc2626', icon: 'circle-x' },
+  { value: 'permission', label: 'ឈប់មានច្បាប់', color: '#ea580c', icon: 'file-check' },
+  { value: 'late', label: 'យឺត', color: '#f59e0b', icon: 'clock' },
+  { value: 'dropout', label: 'សិស្សឈប់រៀន', color: '#7c3aed', icon: 'user-minus' }
 ];
 
 async function fetchData() {
@@ -225,7 +225,7 @@ async function fetchData() {
     if (csRes.ok) state.classSubjects = csRes.data || [];
     if (tchRes.ok) state.teachers = tchRes.data || [];
     if (pagRes.ok) state.pagodas = pagRes.data || [];
-    if (kutRes.ok) state.kutis   = kutRes.data || [];
+    if (kutRes.ok) state.kutis = kutRes.data || [];
 
     if (ay.ok) {
       state.academicYears = ay.data || [];
@@ -270,7 +270,7 @@ async function fetchAttendanceData() {
 
   // A monitor only ever sees their own classroom -- not admin-selectable.
   state.selectedClassroom = monitorInfo.classroom_id;
-  
+
   if (!state.selectedAcademicYear && state.academicYears.length > 0) {
     // Select active year or first year
     const active = state.academicYears.find(y => y.is_current);
@@ -299,7 +299,7 @@ async function fetchAttendanceData() {
         s.change_date === state.selectedDate
       );
     }
-    
+
     if (mpRes.ok) {
       state.multiplePermissions = mpRes.data || [];
     } else {
@@ -379,8 +379,8 @@ async function checkAndSendWarning(studentIds, appliedStatus) {
     const recs = monthRecords.filter(a => String(a.student) === String(studentId));
     // Count unique dates per status (a student may have multiple records per day for multiple subjects)
     const absentCount = new Set(recs.filter(a => a.status === 'absent').map(a => a.attendance_date)).size;
-    const permCount   = new Set(recs.filter(a => a.status === 'permission').map(a => a.attendance_date)).size;
-    const lateCount   = new Set(recs.filter(a => a.status === 'late').map(a => a.attendance_date)).size;
+    const permCount = new Set(recs.filter(a => a.status === 'permission').map(a => a.attendance_date)).size;
+    const lateCount = new Set(recs.filter(a => a.status === 'late').map(a => a.attendance_date)).size;
 
     let shouldWarn = false;
     if (appliedStatus === 'absent' && absentCount >= 2 && (absentCount - 2) % 2 === 0) shouldWarn = true;
@@ -394,10 +394,10 @@ async function checkAndSendWarning(studentIds, appliedStatus) {
     if (!s) continue;
 
     const pagoda = state.pagodas.find(p => String(p.id) === String(s.current_pagoda));
-    const kuti   = state.kutis.find(k => String(k.id) === String(s.kuti));
+    const kuti = state.kutis.find(k => String(k.id) === String(s.kuti));
 
     const msg =
-`🔔 សេចក្តីប្រគេនដំណឹង 🔔
+      `🔔 សេចក្តីប្រគេនដំណឹង 🔔
 សាលា ពុ.អ.វិ.ស.ទ.ន.រ.
 ----- សារព្រមាន -----
 សិស្សឈ្មោះ ៖ ${(s.last_name || '') + ' ' + (s.first_name || '')}
@@ -424,20 +424,20 @@ async function checkAndSendWarning(studentIds, appliedStatus) {
 function getEffectiveStatus(studentId, sData) {
   const rec = state.attendanceRecords.find(a => String(a.student) === String(studentId));
   let currentStatus = rec ? rec.status : null;
-  
+
   if (checkIsDropout(studentId, sData)) {
     return 'dropout';
   }
-  
-  const activePerm = (state.multiplePermissions || []).find(p => 
+
+  const activePerm = (state.multiplePermissions || []).find(p =>
     String(p.student) === String(studentId) &&
     p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
   );
-  
+
   if (activePerm) {
     return 'permission';
   }
-  
+
   return currentStatus;
 }
 
@@ -479,14 +479,14 @@ async function bulkSetStatus(studentIds, status, reason = '', lateTime = null) {
 
     const studentPatch = (status === 'dropout' && !isDropoutNow)
       ? Promise.all([
-          api.patch(`/api/students/list/${id}/`, { status: 'dropped' }),
-          api.post('/api/students/dropouts/', { student: id, reason, status: true })
-        ]).then(() => ({ ok: true }))
+        api.patch(`/api/students/list/${id}/`, { status: 'dropped' }),
+        api.post('/api/students/dropouts/', { student: id, reason, status: true })
+      ]).then(() => ({ ok: true }))
       : (status === 'clear' && isDropoutNow)
         ? Promise.all([
-            api.patch(`/api/students/list/${id}/`, { status: 'active' }),
-            api.post('/api/students/dropouts/', { student: id, reason: 'ត្រឡប់មកវិញ', status: false })
-          ]).then(() => ({ ok: true }))
+          api.patch(`/api/students/list/${id}/`, { status: 'active' }),
+          api.post('/api/students/dropouts/', { student: id, reason: 'ត្រឡប់មកវិញ', status: false })
+        ]).then(() => ({ ok: true }))
         : Promise.resolve({ ok: true });
 
     const permPatch = (status === 'clear' && activePerm)
@@ -603,7 +603,7 @@ function getDatesInRange(startDate, endDate) {
   const cur = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
   while (cur <= end) {
-    dates.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
+    dates.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`);
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
@@ -695,7 +695,7 @@ async function applyPermissionRange(studentId, startDate, endDate, reason, selec
 
 const KHMER_DAYS = ['ថ្ងៃអាទិត្យ', 'ថ្ងៃចន្ទ', 'ថ្ងៃអង្គារ', 'ថ្ងៃពុធ', 'ថ្ងៃព្រហស្បតិ៍', 'ថ្ងៃសុក្រ', 'ថ្ងៃសៅរ៍'];
 function localDateStr(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // Reminder only makes sense for multi-day leave -- a same-day permission's
@@ -723,13 +723,13 @@ async function checkPermissionReminders() {
 
       const khmerNums = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
       const toKh = num => String(num).replace(/[0-9]/g, match => khmerNums[match]);
-      const fmt = d => { const [y,m,day] = d.split('-'); return toKh(`${day}/${m}/${y}`); };
+      const fmt = d => { const [y, m, day] = d.split('-'); return toKh(`${day}/${m}/${y}`); };
       const returnDate = new Date(r.end_date + 'T00:00:00');
       returnDate.setDate(returnDate.getDate() + 1);
       const returnStr = fmt(localDateStr(returnDate));
       const returnDayName = KHMER_DAYS[returnDate.getDay()];
       const msg =
-`🔔 សេចក្តីប្រគេនដំណឹង 🔔
+        `🔔 សេចក្តីប្រគេនដំណឹង 🔔
 សាលា ពុ.អ.វិ.ស.ទ.ន.រ.
 ----- លិខិតសូមច្បាប់ -----
 សិស្សឈ្មោះ ៖ ${r.student_name}
@@ -852,8 +852,8 @@ function getStudentTotalPermDays(studentId) {
   return (state.multiplePermissions || [])
     .filter(p => String(p.student) === String(studentId) && p.start_date <= selected && p.end_date >= selected)
     .reduce((total, p) => {
-      const sel = new Date(selected    + 'T00:00:00');
-      const end = new Date(p.end_date  + 'T00:00:00');
+      const sel = new Date(selected + 'T00:00:00');
+      const end = new Date(p.end_date + 'T00:00:00');
       return total + Math.round((end - sel) / 86400000);
     }, 0);
 }
@@ -876,7 +876,7 @@ function update() {
 
   root.innerHTML = `
     <div style="min-height:100vh;background:var(--bg-main);display:flex;justify-content:center;">
-    <div class="animate-fade-in monitor-attendance-page" style="width:100%;max-width:900px;display:flex;flex-direction:column;">
+    <div class="animate-fade-in monitor-attendance-page" style="width:100%;max-width:480px;display:flex;flex-direction:column;">
 
         <div style="background-color:#4f46e5;background-image:linear-gradient(135deg, #4f46e5, #6366f1);color:white;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom-left-radius:24px;border-bottom-right-radius:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
           <div style="width:40px;height:40px;flex-shrink:0;background-color:white;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
@@ -901,13 +901,10 @@ function update() {
 
       <div class="monitor-attendance-body" style="display:flex;flex-direction:column;gap:16px;padding:16px;padding-bottom:calc(88px + env(safe-area-inset-bottom));">
 
-      <!-- Always visible so a holiday date can be navigated away from --  the
-      rest of this view (schedule cards, student list) is gated on whether
-      the selected date is a holiday, but the picker itself must not be. -->
-      <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:600;color:var(--text-secondary);background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;align-self:flex-start;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:600;color:var(--text-secondary);background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:5px 12px;align-self:flex-start;">
         <i data-lucide="calendar" style="width:14px;height:14px;flex-shrink:0;"></i>
-        <input type="date" data-f="selected-date" value="${selectedDate}" style="border:none;background:transparent;font-size:0.85rem;font-weight:600;color:var(--text-secondary);font-family:inherit;padding:2px 0;cursor:pointer;" />
-      </label>
+        <span>ថ្ងៃទី ${selectedDate.split('-').reverse().join('/')}</span>
+      </div>
 
       <!-- Schedule cards grouped by session -->
       ${isHolyDay(state.selectedDate) ? `
@@ -918,19 +915,19 @@ function update() {
         </div>
       ` : `
       ${todaySchedule.length > 0 ? (() => {
-        const PALETTE = [
-          { bg: '#eff6ff', activeBg: '#dbeafe', border: '#3b82f6', text: '#1d4ed8', badgeBg: '#bfdbfe', gradient: 'linear-gradient(135deg,#3b82f6,#6366f1)' },
-          { bg: '#f0fdf4', activeBg: '#dcfce7', border: '#22c55e', text: '#15803d', badgeBg: '#bbf7d0', gradient: 'linear-gradient(135deg,#22c55e,#10b981)' },
-          { bg: '#fdf4ff', activeBg: '#f3e8ff', border: '#a855f7', text: '#7e22ce', badgeBg: '#e9d5ff', gradient: 'linear-gradient(135deg,#a855f7,#ec4899)' },
-          { bg: '#fff7ed', activeBg: '#ffedd5', border: '#f97316', text: '#c2410c', badgeBg: '#fed7aa', gradient: 'linear-gradient(135deg,#f97316,#eab308)' },
-          { bg: '#fff1f2', activeBg: '#ffe4e6', border: '#f43f5e', text: '#be123c', badgeBg: '#fecdd3', gradient: 'linear-gradient(135deg,#f43f5e,#f97316)' },
-        ];
+      const PALETTE = [
+        { bg: '#eff6ff', activeBg: '#dbeafe', border: '#3b82f6', text: '#1d4ed8', badgeBg: '#bfdbfe', gradient: 'linear-gradient(135deg,#3b82f6,#6366f1)' },
+        { bg: '#f0fdf4', activeBg: '#dcfce7', border: '#22c55e', text: '#15803d', badgeBg: '#bbf7d0', gradient: 'linear-gradient(135deg,#22c55e,#10b981)' },
+        { bg: '#fdf4ff', activeBg: '#f3e8ff', border: '#a855f7', text: '#7e22ce', badgeBg: '#e9d5ff', gradient: 'linear-gradient(135deg,#a855f7,#ec4899)' },
+        { bg: '#fff7ed', activeBg: '#ffedd5', border: '#f97316', text: '#c2410c', badgeBg: '#fed7aa', gradient: 'linear-gradient(135deg,#f97316,#eab308)' },
+        { bg: '#fff1f2', activeBg: '#ffe4e6', border: '#f43f5e', text: '#be123c', badgeBg: '#fecdd3', gradient: 'linear-gradient(135deg,#f43f5e,#f97316)' },
+      ];
 
-        function renderCard(e, globalIdx) {
-          const c = PALETTE[globalIdx % PALETTE.length];
-          const isActive = e.timeSlotId === String(selectedTimeSlot);
-          const teacherName = e.teacher ? `${e.teacher.last_name || ''} ${e.teacher.first_name || ''}`.trim() : null;
-          return `
+      function renderCard(e, globalIdx) {
+        const c = PALETTE[globalIdx % PALETTE.length];
+        const isActive = e.timeSlotId === String(selectedTimeSlot);
+        const teacherName = e.teacher ? `${e.teacher.last_name || ''} ${e.teacher.first_name || ''}`.trim() : null;
+        return `
             <div data-action="select-slot" data-slot="${e.timeSlotId}" role="button" tabindex="0"
               style="display:flex;flex-direction:column;border-radius:10px;border:2px solid ${isActive ? c.border : '#e5e7eb'};
                 overflow:hidden;background:${isActive ? c.activeBg : '#fff'};cursor:pointer;
@@ -943,7 +940,7 @@ function update() {
                   background:${isActive ? c.border : c.badgeBg};color:${isActive ? '#fff' : c.text};
                   font-size:0.56rem;font-weight:700;padding:1px 6px;border-radius:9999px;white-space:nowrap;">
                   <i data-lucide="clock" style="width:8px;height:8px;flex-shrink:0;"></i>
-                  ${fmtTime(e.slot.start_time.slice(0,5))}
+                  ${fmtTime(e.slot.start_time.slice(0, 5))}
                 </span>
                 ${e.isSubstituted ? `
                   <span style="display:inline-flex;align-items:center;
@@ -968,14 +965,14 @@ function update() {
                 </span>
               </div>
             </div>`;
-        }
+      }
 
-        const activeSession = selectedSession;
-        const activeSessionLabel = SESSION_LABELS[activeSession] || activeSession;
-        const activeSessionIcon  = activeSession === 'morning' ? '☀️' : '🌤';
-        const activeEntries = todaySchedule.filter(e => e.slot.session === activeSession);
+      const activeSession = selectedSession;
+      const activeSessionLabel = SESSION_LABELS[activeSession] || activeSession;
+      const activeSessionIcon = activeSession === 'morning' ? '☀️' : '🌤';
+      const activeEntries = todaySchedule.filter(e => e.slot.session === activeSession);
 
-        return `<div>
+      return `<div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
             <span style="font-size:1.1rem;">${activeSessionIcon}</span>
             <span style="font-size:0.88rem;font-weight:700;color:var(--text-primary);letter-spacing:0.2px;">វេន${activeSessionLabel}</span>
@@ -986,7 +983,7 @@ function update() {
             ${activeEntries.map(e => renderCard(e, todaySchedule.indexOf(e))).join('')}
           </div>
         </div>`;
-      })() : ''}
+    })() : ''}
 
       ${error ? `<div style="background:#fee2e2;color:#b91c1c;padding:16px;border-radius:8px;display:flex;align-items:center;gap:8px;"><i data-lucide="alert-circle" style="width:18px;height:18px;flex-shrink:0;"></i>${error}</div>` : ''}
 
@@ -994,6 +991,10 @@ function update() {
         <div class="glass-panel" style="padding:12px 16px;display:flex;flex-direction:column;gap:12px;position:relative;z-index:5;">
           <div style="display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:12px;">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button data-action="view-attendance-report" title="មើលទិន្នន័យវត្តមាន"
+                style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;font-weight:600;font-family:inherit;">
+                <i data-lucide="bar-chart-3" style="width:15px;height:15px;"></i>មើលទិន្នន័យ
+              </button>
               <button data-action="send-telegram" title="ផ្ញើទៅ Telegram"
                 style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:none;background:#0088cc;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;font-family:inherit;"
                 ${enrollments.length === 0 ? 'disabled' : ''}>
@@ -1043,37 +1044,37 @@ function update() {
         <div class="glass-panel" style="padding:14px;position:relative;">
           ${saving ? `<div style="position:absolute;inset:0;background:rgba(255,255,255,0.75);z-index:10;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;color:var(--primary);border-radius:16px;"><i data-lucide="loader-circle" class="animate-spin" style="width:18px;height:18px;"></i>កំពុងរក្សាទុក...</div>` : ''}
           ${(() => {
-            let filteredEnrollments = enrollments;
-            if (state.searchQuery && state.searchQuery.trim() !== '') {
-              const q = state.searchQuery.trim().toLowerCase();
-              filteredEnrollments = filteredEnrollments.filter(en => {
-                const s = en.studentData;
-                if (!s) return false;
-                const name = `${s.last_name || ''} ${s.first_name || ''}`.toLowerCase();
-                const code = (s.student_code || '').toLowerCase();
-                return name.includes(q) || code.includes(q);
-              });
-            }
-            if (state.statusFilter !== 'all') {
-              filteredEnrollments = filteredEnrollments.filter(en =>
-                getEffectiveStatus(en.student, en.studentData) === state.statusFilter
-              );
-            }
-            if (state.pagodaFilter !== 'all') {
-              filteredEnrollments = filteredEnrollments.filter(en =>
-                String(en.studentData?.current_pagoda) === String(state.pagodaFilter)
-              );
-            }
-            const filtersActive = state.searchQuery || state.statusFilter !== 'all' || state.pagodaFilter !== 'all';
-            if (filteredEnrollments.length === 0) {
-              return `
+        let filteredEnrollments = enrollments;
+        if (state.searchQuery && state.searchQuery.trim() !== '') {
+          const q = state.searchQuery.trim().toLowerCase();
+          filteredEnrollments = filteredEnrollments.filter(en => {
+            const s = en.studentData;
+            if (!s) return false;
+            const name = `${s.last_name || ''} ${s.first_name || ''}`.toLowerCase();
+            const code = (s.student_code || '').toLowerCase();
+            return name.includes(q) || code.includes(q);
+          });
+        }
+        if (state.statusFilter !== 'all') {
+          filteredEnrollments = filteredEnrollments.filter(en =>
+            getEffectiveStatus(en.student, en.studentData) === state.statusFilter
+          );
+        }
+        if (state.pagodaFilter !== 'all') {
+          filteredEnrollments = filteredEnrollments.filter(en =>
+            String(en.studentData?.current_pagoda) === String(state.pagodaFilter)
+          );
+        }
+        const filtersActive = state.searchQuery || state.statusFilter !== 'all' || state.pagodaFilter !== 'all';
+        if (filteredEnrollments.length === 0) {
+          return `
                 <div style="text-align:center;padding:50px 20px;color:var(--text-muted);">
                   <i data-lucide="user-x" style="width:36px;height:36px;margin:0 auto 10px;display:block;opacity:0.5;"></i>
                   មិនមានសិស្ស ${filtersActive ? 'ស្វែងរកឃើញ' : 'ក្នុងថ្នាក់នេះទេ'}
                 </div>`;
-            }
-            return renderTableView(filteredEnrollments);
-          })()}
+        }
+        return renderTableView(filteredEnrollments);
+      })()}
         </div>
       `}
       `}
@@ -1277,9 +1278,9 @@ function update() {
       const s = state.enrollments.find(e => String(e.student) === String(studentId))?.studentData;
       const existing = state.attendanceRecords.find(a => String(a.student) === String(studentId));
       let currentStatus = existing ? existing.status : null;
-      
+
       currentStatus = getEffectiveStatus(studentId, s);
-      const activePerm = (state.multiplePermissions || []).find(p => 
+      const activePerm = (state.multiplePermissions || []).find(p =>
         String(p.student) === String(studentId) &&
         p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
       );
@@ -1313,6 +1314,7 @@ function update() {
   });
 
   root.querySelector('[data-action="send-telegram"]')?.addEventListener('click', () => sendToTelegram());
+  root.querySelector('[data-action="view-attendance-report"]')?.addEventListener('click', () => navigate('/monitor-attendance-report'));
 
   window.scrollTo(scrollX, scrollY);
 }
@@ -1324,26 +1326,26 @@ function update() {
 function renderTableView(enrollments) {
   return `<div style="display:flex;flex-direction:column;gap:8px;">
     ${enrollments.map((en, i) => {
-      const s = en.studentData;
-      const currentStatus = getEffectiveStatus(s.id, s);
-      const rec = state.attendanceRecords.find(a => String(a.student) === String(s.id));
-      const opt = STATUS_OPTIONS.find(o => o.value === currentStatus);
-      const statusColor = opt?.color || '#16a34a';
-      const permDays = getStudentTotalPermDays(s.id);
+    const s = en.studentData;
+    const currentStatus = getEffectiveStatus(s.id, s);
+    const rec = state.attendanceRecords.find(a => String(a.student) === String(s.id));
+    const opt = STATUS_OPTIONS.find(o => o.value === currentStatus);
+    const statusColor = opt?.color || '#16a34a';
+    const permDays = getStudentTotalPermDays(s.id);
 
-      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--border);border-left:4px solid ${statusColor};">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--border);border-left:4px solid ${statusColor};">
         <div style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;">${i + 1}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.last_name || ''} ${s.first_name || ''}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;">
+        <div data-action="apply-status" data-student="${s.id}" data-status="absent" title="ចុចដើម្បីកត់អវត្តមាន / ដកចេញ" style="flex:1;min-width:0;cursor:pointer;">
+          <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;">${s.last_name || ''} ${s.first_name || ''}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;pointer-events:none;">
             <span style="font-size:0.72rem;color:var(--text-secondary);">${s.student_code || '---'}</span>
             <span style="font-size:0.72rem;font-weight:600;color:${statusColor};">${opt?.label || 'មក'}</span>
-            ${currentStatus === 'late' && rec?.late_time ? `<span style="font-size:0.65rem;background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:12px;font-weight:700;">ម៉ោង ${rec.late_time.slice(0,5)}</span>` : ''}
+            ${currentStatus === 'late' && rec?.late_time ? `<span style="font-size:0.65rem;background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:12px;font-weight:700;">ម៉ោង ${rec.late_time.slice(0, 5)}</span>` : ''}
             ${permDays > 0 ? `<span style="font-size:0.65rem;background:#fff7ed;color:#ea580c;padding:1px 6px;border-radius:12px;font-weight:700;">ច្បាប់ ${permDays}ថ្ងៃ</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0;">
-          ${STATUS_OPTIONS.filter(o => o.value !== 'permission').map(o => `
+          ${STATUS_OPTIONS.filter(o => o.value !== 'permission' && o.value !== 'absent' && o.value !== 'dropout').map(o => `
             <button data-action="apply-status" data-student="${s.id}" data-status="${o.value}" title="${o.label}"
               style="width:36px;height:36px;border-radius:9px;border:1.5px solid ${currentStatus === o.value ? o.color : 'var(--border)'};
                 background:${currentStatus === o.value ? o.color : '#fff'};color:${currentStatus === o.value ? '#fff' : o.color};
@@ -1353,7 +1355,7 @@ function renderTableView(enrollments) {
           `).join('')}
         </div>
       </div>`;
-    }).join('')}
+  }).join('')}
   </div>`;
 }
 
@@ -1365,19 +1367,19 @@ function _tgHelpers() {
   const yearName = ayObj?.year_name || '';
 
   const d = new Date(state.selectedDate);
-  const dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
   // Active session = strictly follow the selected session from state to keep UI in sync
   const activeSession = state.selectedSession || 'morning';
-  const sessionLabel  = activeSession === 'morning' ? 'ព្រឹក' : 'រសៀល';
-  const sessionIcon   = activeSession === 'morning' ? '☀️' : '🌤';
+  const sessionLabel = activeSession === 'morning' ? 'ព្រឹក' : 'រសៀល';
+  const sessionIcon = activeSession === 'morning' ? '☀️' : '🌤';
 
   // Only this session's entries
   const schedule = fullSchedule.filter(e => e.slot.session === activeSession);
 
   // Time range for the session
   const timeStr = schedule.length
-    ? `${fmtTime(schedule[0].slot.start_time.slice(0,5))} - ${fmtTime(schedule[schedule.length - 1].slot.end_time.slice(0,5))}`
+    ? `${fmtTime(schedule[0].slot.start_time.slice(0, 5))} - ${fmtTime(schedule[schedule.length - 1].slot.end_time.slice(0, 5))}`
     : '';
 
   // Subjects for the session (flat)
@@ -1388,7 +1390,7 @@ function _tgHelpers() {
   const sessionTeachers = [];
   schedule.forEach(e => {
     if (e.teacher) {
-      const name = `${e.teacher.last_name||''} ${e.teacher.first_name||''}`.trim();
+      const name = `${e.teacher.last_name || ''} ${e.teacher.first_name || ''}`.trim();
       if (!seenT.has(name)) { seenT.add(name); sessionTeachers.push(name); }
     }
   });
@@ -1400,9 +1402,9 @@ function _tgHelpers() {
 
   const activeEnrollments = state.enrollments.filter(e => !checkIsDropout(e.student, e.studentData));
   const dropoutList = state.enrollments.filter(e => checkIsDropout(e.student, e.studentData)).map(e => e.studentData);
-  
+
   const total = activeEnrollments.length;
-  
+
   const permList = [];
   const absentList = [];
   const presentList = [];
@@ -1421,21 +1423,21 @@ function _tgHelpers() {
   function nameOf(record) {
     // If it's already a student object (e.g. from dropoutList)
     if (record.last_name !== undefined) {
-      return `${record.last_name||''} ${record.first_name||''}`.trim();
+      return `${record.last_name || ''} ${record.first_name || ''}`.trim();
     }
     const en = state.enrollments.find(e => String(e.student) === String(record.student));
-    return en?.studentData ? `${en.studentData.last_name||''} ${en.studentData.first_name||''}`.trim() : '---';
+    return en?.studentData ? `${en.studentData.last_name || ''} ${en.studentData.first_name || ''}`.trim() : '---';
   }
 
   function nameAndReasonOf(record) {
     const en = state.enrollments.find(e => String(e.student) === String(record.student));
     const s = en?.studentData;
     if (!s) return '---';
-    const name = `${s.last_name||''} ${s.first_name||''}`.trim();
-    
-    const p = (state.multiplePermissions || []).find(p => 
-       String(p.student) === String(record.student) && 
-       p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
+    const name = `${s.last_name || ''} ${s.first_name || ''}`.trim();
+
+    const p = (state.multiplePermissions || []).find(p =>
+      String(p.student) === String(record.student) &&
+      p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
     );
     const reason = p?.reason ? p.reason : '';
 
@@ -1447,23 +1449,25 @@ function _tgHelpers() {
       const pagodaObj = state.pagodas.find(pg => String(pg.id) === String(s.current_pagoda));
       if (pagodaObj) location = pagodaObj.name;
     }
-    
+
     let res = name;
     if (reason) res += ` , (${reason})`;
     if (location) res += ` , (${location})`;
     return res;
   }
 
-  return { schedule, className, yearName, dateStr, timeStr,
-           activeSession, sessionLabel, sessionIcon,
-           sessionSubjects, sessionTeachers, slotSubjects,
-           total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf };
+  return {
+    schedule, className, yearName, dateStr, timeStr,
+    activeSession, sessionLabel, sessionIcon,
+    sessionSubjects, sessionTeachers, slotSubjects,
+    total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf
+  };
 }
 
 function buildTelegramMessage() {
   const { className, yearName, dateStr, timeStr,
-          sessionSubjects, sessionTeachers,
-          total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf } = _tgHelpers();
+    sessionSubjects, sessionTeachers,
+    total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf } = _tgHelpers();
 
   function formatDashes(list, minDashes, indent) {
     let lines = list.map(item => `${indent}- ${item}`);
@@ -1474,7 +1478,7 @@ function buildTelegramMessage() {
   }
 
   const classLabel = className.replace(/^ថ្នាក់ទី\s*/u, '');
-  
+
   // Calculate Generation (e.g. 2026-2027 => 2026 - 2003 = 23)
   const startYearMatch = (yearName || '').match(/^(\d{4})/);
   const generation = startYearMatch ? (parseInt(startYearMatch[1], 10) - 2003) : yearName;
@@ -1519,7 +1523,7 @@ function buildAbsentDetailMessage() {
   }
 
   const classLabel = className.replace(/^ថ្នាក់ទី\s*/u, '');
-  
+
   const toKh = (num) => {
     const khmerNums = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
     return String(num).replace(/[0-9]/g, match => khmerNums[match]);
@@ -1535,21 +1539,80 @@ ${formatDashes(slotSubjects, 3, '    ')}
 ${formatDashes(absentList.map(nameOf), 6, '     ')}`;
 }
 
+// Archives the sent report text into report_daily so there's a persistent
+// record beyond Telegram's own history. That table has a unique constraint
+// on (report_date, reported_by) -- one row per monitor per day -- so a
+// second send on the same day appends to the existing row instead of
+// failing on a duplicate-key error.
+async function saveReportDaily(messageText) {
+  const user = getUser();
+  const reportedBy = user?.id;
+  if (!reportedBy) return;
+  const reportDate = state.selectedDate;
+  try {
+    const listRes = await api.get('/api/attendance/report-daily/');
+    const existing = (listRes.data || []).find(r =>
+      r.report_date === reportDate && String(r.reported_by) === String(reportedBy)
+    );
+    if (existing) {
+      await api.patch(`/api/attendance/report-daily/${existing.id}/`, {
+        content: `${existing.content}\n\n----- ផ្ញើម្តងទៀត -----\n\n${messageText}`
+      });
+    } else {
+      const classObj = getSelectedClassroomObj();
+      await api.post('/api/attendance/report-daily/', {
+        report_date: reportDate,
+        title: `របាយការណ៍វត្តមាន ថ្នាក់ទី ${classObj?.class_name || ''} - ${reportDate}`,
+        content: messageText,
+        reported_by: reportedBy
+      });
+    }
+  } catch (err) {
+    console.error('Failed to save daily report:', err);
+  }
+}
+
+// After a report is sent, absent/late/single-day-permission markings are
+// specific to the session just reported and should reset so the next
+// session starts clean. Dropouts and multi-day permissions are ongoing
+// states, not per-session markings, so they're left untouched.
+function getStudentsToResetAfterReport() {
+  const ids = [];
+  state.enrollments.forEach(en => {
+    const sid = en.student;
+    const sData = en.studentData;
+    if (checkIsDropout(sid, sData)) return;
+    const status = getEffectiveStatus(sid, sData);
+    if (status === 'absent' || status === 'late') {
+      ids.push(sid);
+    } else if (status === 'permission') {
+      const activePerm = (state.multiplePermissions || []).find(p =>
+        String(p.student) === String(sid) &&
+        p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
+      );
+      if (activePerm && activePerm.start_date === activePerm.end_date) {
+        ids.push(sid);
+      }
+    }
+  });
+  return ids;
+}
+
 async function sendToTelegram() {
   let btn = root.querySelector('[data-action="send-telegram"]');
   try {
     let tgConfig = {};
     try {
       tgConfig = JSON.parse(localStorage.getItem('tgConfig') || '{}');
-    } catch(e) {
+    } catch (e) {
       tgConfig = {};
     }
-    
+
     if (!tgConfig.token || !tgConfig.chatId) {
-      showToast('Telegram Bot មិនទាន់ត្រូវបានកំណត់ទេ សូមទាក់ទងអ្នកគ្រប់គ្រង', 'error');
+      showToast('សូមកំណត់ Telegram Bot ជាមុនសិន (ចូលទៅគណនី > ការកំណត់ Telegram Bot)', 'error');
       return;
     }
-    
+
     if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-circle" style="width:15px;height:15px;animation:spin 1s linear infinite;"></i>'; if (window.lucide) window.lucide.createIcons(); }
 
     async function postMsg(text) {
@@ -1561,9 +1624,32 @@ async function sendToTelegram() {
       if (!res.ok) throw new Error('Telegram error ' + res.status);
     }
 
-    await postMsg(buildTelegramMessage());
+    const mainMsg = buildTelegramMessage();
     const absentMsg = buildAbsentDetailMessage();
+
+    await postMsg(mainMsg);
     if (absentMsg) await postMsg(absentMsg);
+
+    // The Telegram send already succeeded at this point -- a backend hiccup
+    // (network blip, CORS misconfig, etc.) in the follow-up save/reset steps
+    // must not make this report as "failed to send Telegram", since it
+    // didn't. Each runs in its own try/catch so a failure here only logs
+    // and surfaces a distinct, non-blocking warning.
+    try {
+      await saveReportDaily(absentMsg ? `${mainMsg}\n\n${absentMsg}` : mainMsg);
+    } catch (err) {
+      console.error('Failed to save daily report:', err);
+      showToast('បានផ្ញើ Telegram ដោយជោគជ័យ ប៉ុន្តែមិនអាចរក្សាទុករបាយការណ៍បានទេ', 'warning');
+    }
+
+    try {
+      const idsToReset = getStudentsToResetAfterReport();
+      if (idsToReset.length > 0) await bulkSetStatus(idsToReset, 'clear');
+    } catch (err) {
+      console.error('Failed to reset attendance after report:', err);
+      showToast('បានផ្ញើ Telegram ដោយជោគជ័យ ប៉ុន្តែមិនអាចសម្អាតវត្តមានឡើងវិញបានទេ', 'warning');
+    }
+
     showToast('បានផ្ញើទៅ Telegram ដោយជោគជ័យ ✅', 'success');
   } catch (err) {
     console.error(err);

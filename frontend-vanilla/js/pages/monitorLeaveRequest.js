@@ -5,6 +5,8 @@ import { api } from '../api.js';
 import { onLiveInput } from '../utils/dom.js';
 import { showToast } from '../components/toast.js';
 import { getTgConfig, sendTelegramPhoto, sendTelegramMessage, withSendingSpinner } from '../utils/telegram.js';
+import { createMonitorBottomNav } from '../components/monitorBottomNav.js';
+import { openMonitorAccountSheet } from '../components/monitorAccountSheet.js';
 
 let root = null;
 let state = {
@@ -226,7 +228,7 @@ function buildLeaveTelegramMessage(perm) {
 async function sendLeaveToTelegram(perm, btn) {
   const tgConfig = getTgConfig();
   if (!tgConfig.token || !tgConfig.chatId) {
-    showToast('Telegram Bot មិនទាន់ត្រូវបានកំណត់ទេ សូមទាក់ទងអ្នកគ្រប់គ្រង', 'error');
+    showToast('សូមកំណត់ Telegram Bot ជាមុនសិន (ចូលទៅគណនី > ការកំណត់ Telegram Bot)', 'error');
     return;
   }
   const text = buildLeaveTelegramMessage(perm);
@@ -268,7 +270,7 @@ function buildAllLeavesTelegramMessage(group) {
 async function sendAllLeavesToTelegram(group, btn) {
   const tgConfig = getTgConfig();
   if (!tgConfig.token || !tgConfig.chatId) {
-    showToast('Telegram Bot មិនទាន់ត្រូវបានកំណត់ទេ សូមទាក់ទងអ្នកគ្រប់គ្រង', 'error');
+    showToast('សូមកំណត់ Telegram Bot ជាមុនសិន (ចូលទៅគណនី > ការកំណត់ Telegram Bot)', 'error');
     return;
   }
   const text = buildAllLeavesTelegramMessage(group);
@@ -455,8 +457,8 @@ function studentDropdownWrapInnerHTML() {
     <div style="position:relative;">
       <div style="position:absolute;top:50%;left:12px;transform:translateY(-50%);display:flex;align-items:center;pointer-events:none;">
         ${!showStudentDropdown && selectedStudentObj?.image
-          ? `<img src="${selectedStudentObj.image}" alt="" style="width:22px;height:22px;border-radius:50%;object-fit:cover;" />`
-          : `<i data-lucide="search" style="width:16px;height:16px;color:var(--text-muted);"></i>`}
+      ? `<img src="${selectedStudentObj.image}" alt="" style="width:22px;height:22px;border-radius:50%;object-fit:cover;" />`
+      : `<i data-lucide="search" style="width:16px;height:16px;color:var(--text-muted);"></i>`}
       </div>
       <input type="text" data-role="student-search" class="form-input" value="${showStudentDropdown ? studentSearch : (selectedStudentObj?.name || '')}" placeholder="ស្វែងរក និងជ្រើសរើសសិស្ស..." ${loading ? 'disabled' : ''}
         style="padding-left:${!showStudentDropdown && selectedStudentObj?.image ? '42px' : '36px'};padding-right:36px;" />
@@ -545,7 +547,7 @@ function update() {
 
   root.innerHTML = `
     <div style="min-height:100vh;background-color:#f3f4f6;font-family:'Khmer OS Battambang','Battambang',sans-serif;display:flex;justify-content:center;">
-    <div class="animate-fade-in" style="width:100%;max-width:640px;">
+    <div class="animate-fade-in" style="width:100%;max-width:480px;">
       <div style="background-color:#4f46e5;background-image:linear-gradient(135deg, #4f46e5, #6366f1);color:white;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom-left-radius:24px;border-bottom-right-radius:24px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
         <div style="width:40px;height:40px;flex-shrink:0;background-color:white;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
           <img src="/logo.jpg" alt="School Logo" style="width:100%;height:100%;object-fit:contain;" />
@@ -567,7 +569,7 @@ function update() {
         </div>
       </div>
 
-      <div style="padding:16px;padding-bottom:60px;display:flex;flex-direction:column;gap:20px;">
+      <div style="padding:16px;padding-bottom:80px;display:flex;flex-direction:column;gap:20px;">
         <div style="background-color:white;border-radius:18px;padding:20px;box-shadow:0 2px 10px rgba(15,23,42,0.06);border:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;">
@@ -651,11 +653,11 @@ function update() {
             ${!loading && permissions.length > 0 ? `<span style="font-size:12px;font-weight:700;color:var(--text-secondary);background:#f3f4f6;padding:4px 10px;border-radius:999px;flex-shrink:0;">${permissions.length} កំណត់ត្រា</span>` : ''}
           </div>
           ${loading ? `<div style="text-align:center;padding:30px 20px;color:var(--text-secondary);"><i data-lucide="loader-2" class="animate-spin" style="display:block;margin:0 auto 8px;width:24px;height:24px;"></i>កំពុងទាញយកទិន្នន័យ...</div>`
-            : groupedPermissions.length === 0 ? `<div style="text-align:center;padding:36px 20px;color:var(--text-muted);"><i data-lucide="calendar-x" style="width:32px;height:32px;margin:0 auto 10px;display:block;opacity:0.5;"></i>មិនទាន់មានទិន្នន័យសុំច្បាប់នៅឡើយទេ</div>`
-            : `<div style="display:flex;flex-direction:column;gap:10px;">
+      : groupedPermissions.length === 0 ? `<div style="text-align:center;padding:36px 20px;color:var(--text-muted);"><i data-lucide="calendar-x" style="width:32px;height:32px;margin:0 auto 10px;display:block;opacity:0.5;"></i>មិនទាន់មានទិន្នន័យសុំច្បាប់នៅឡើយទេ</div>`
+        : `<div style="display:flex;flex-direction:column;gap:10px;">
                 ${groupedPermissions.map(g => {
-                  const isOverLimit = g.totalCount > 3;
-                  return `
+          const isOverLimit = g.totalCount > 3;
+          return `
                     <div data-role="leave-history-item" data-action="view-perm" data-student-id="${g.student_id}" style="padding:12px 14px;border-radius:14px;border:1px solid ${isOverLimit ? 'var(--danger)' : 'var(--border)'};border-left:4px solid ${isOverLimit ? 'var(--danger)' : g.isActive ? 'var(--warning)' : 'var(--border)'};background-color:${isOverLimit ? '#fef2f2' : g.isActive ? '#fffbeb' : '#fafafa'};display:flex;align-items:center;gap:12px;transition:box-shadow .15s;cursor:pointer;">
                       <div style="width:40px;height:40px;border-radius:50%;background-color:${g.image_url ? 'transparent' : 'var(--primary-light)'};display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
                         ${g.image_url ? `<img src="${g.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;" />` : `<i data-lucide="user-check" style="width:20px;height:20px;color:var(--primary)"></i>`}
@@ -674,7 +676,7 @@ function update() {
                       <div style="width:34px;height:34px;color:var(--text-secondary);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" title="មើលព័ត៌មានទាំងអស់"><i data-lucide="eye" style="width:18px;height:18px"></i></div>
                     </div>
                   `;
-                }).join('')}
+        }).join('')}
               </div>`}
         </div>
       </div>
@@ -696,8 +698,8 @@ function update() {
             </div>
             <div style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;">
               ${viewingGroup.records.map(r => {
-                const isActive = new Date(r.start_date) <= new Date() && new Date(r.end_date) >= new Date();
-                return `
+          const isActive = new Date(r.start_date) <= new Date() && new Date(r.end_date) >= new Date();
+          return `
                   <div style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background-color:${isActive ? '#fffbeb' : '#fafafa'};font-size:13px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                       <div style="color:#111827;font-weight:600;flex:1;min-width:0;">${r.reason}</div>
@@ -712,16 +714,21 @@ function update() {
                     </div>
                   </div>
                 `;
-              }).join('')}
+        }).join('')}
             </div>
           </div>
         </div>
       ` : ''}
+      <div data-role="bottom-nav-mount"></div>
     </div>
     </div>
   `;
 
   root.querySelector('[data-action="back"]').addEventListener('click', () => window.history.back());
+
+  const bottomNavMount = root.querySelector('[data-role="bottom-nav-mount"]');
+  const bottomNav = createMonitorBottomNav({ active: 'leave', onAccountClick: () => openMonitorAccountSheet() });
+  bottomNavMount.replaceWith(bottomNav.el);
   const cancelEditBtn = root.querySelector('[data-action="cancel-edit"]');
   if (cancelEditBtn) cancelEditBtn.addEventListener('click', handleCancelEdit);
   root.querySelector('[data-role="leave-form"]').addEventListener('submit', handleSubmit);

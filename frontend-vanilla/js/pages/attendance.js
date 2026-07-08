@@ -2157,7 +2157,18 @@ async function saveSubstitution() {
   const newSubjectId = document.getElementById('sub-new-subject')?.value;
   if (!newSubjectId) { showToast('សូមជ្រើសរើសមុខវិជ្ជា', 'error'); return; }
   try {
-    const res = await api.post('/api/core/schedule-substitutions/', {
+    // One substitution per (classroom, date, time_slot, original_subject) --
+    // update it in place instead of creating a duplicate, otherwise two
+    // records exist for the same slot and readers picking the first match
+    // (e.g. monitor's computeTodaySchedule) show the older one, silently
+    // ignoring whatever change was just made.
+    const existing = (state.substitutions || []).find(s =>
+      String(s.classroom) === String(state.selectedClassroom) &&
+      s.change_date === state.selectedDate &&
+      String(s.time_slot) === String(modal.timeSlotId) &&
+      String(s.original_subject) === String(modal.originalSubjectId)
+    );
+    const payload = {
       classroom: state.selectedClassroom,
       change_date: state.selectedDate,
       time_slot: modal.timeSlotId,
@@ -2165,9 +2176,14 @@ async function saveSubstitution() {
       new_subject: newSubjectId,
       new_teacher: document.getElementById('sub-new-teacher')?.value || null,
       reason: document.getElementById('sub-reason')?.value || ''
-    });
+    };
+    const res = existing
+      ? await api.patch(`/api/core/schedule-substitutions/${existing.id}/`, payload)
+      : await api.post('/api/core/schedule-substitutions/', payload);
     if (!res.ok) throw new Error('Failed to save');
-    state.substitutions = [...(state.substitutions || []), res.data];
+    state.substitutions = existing
+      ? state.substitutions.map(s => s.id === existing.id ? res.data : s)
+      : [...(state.substitutions || []), res.data];
     state.substitutionModal = null;
     showToast('ផ្លាស់ប្ដូរដោយជោគជ័យ', 'success');
     update();

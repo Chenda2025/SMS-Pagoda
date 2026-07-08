@@ -80,24 +80,6 @@ function buildUrl(rawPath) {
 // Request payload translation (Django field-name differences), mirrors djangoAdapter.js.
 function translateRequestBody(path, body) {
   if (!body) return body;
-  const isStudentRecordPath = path.startsWith('/api/students/list') || path === '/api/students' || path === '/api/students/';
-  if (isStudentRecordPath) {
-    const names = (body.name || '').split(' ');
-    return {
-      ...body,
-      first_name: names[0] || '',
-      last_name: names.slice(1).join(' ') || names[0] || '',
-      latin_name: body.name_en || '',
-      gender: body.sex || 'ប្រុស',
-      monk_status: body.monk_status || 'គ្រហស្ថ',
-      date_of_birth: body.dob || null,
-      enrollment_date: body.enrollment_date || null,
-      status: body.status || 'សកម្ម',
-      current_pagoda: body.pagoda || null,
-      kuti: body.kodi || null,
-      nationality: body.nationality || null,
-    };
-  }
   if (path.includes('/api/teachers') || path.includes('/api/users/teachers')) {
     const names = (body.name || '').split(' ');
     return {
@@ -140,8 +122,29 @@ function translateResponseBody(path, data) {
 // Caches GET responses on-device (localStorage) so re-opening a page shows
 // data instantly instead of re-fetching. A write (POST/PUT/PATCH/DELETE)
 // clears the whole cache since we don't track which GETs it affects.
+//
+// This is only safe for data one device rarely sees change out from under it
+// (reference/config data set up once by an admin: subjects, classrooms,
+// time slots, geo lookups...). Attendance, dropouts, enrollments, students,
+// permissions and substitutions are mutated by OTHER users on OTHER devices
+// constantly (e.g. an admin marking a student dropped out while a monitor
+// has the attendance page open on their own phone) -- clearCache() only
+// clears the *local* device's cache on a *local* write, so caching these
+// makes a different device's changes invisible for up to CACHE_TTL_MS.
 const CACHE_PREFIX = 'apiCache:';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const NO_CACHE_PATH_PREFIXES = [
+  '/api/attendance/',
+  '/api/students/',
+  '/api/core/schedule-substitutions/',
+  '/api/monitor/',
+  '/api/users/pending-teachers/',
+  '/api/users/teacher-registration-sessions/',
+  '/api/users/users',
+];
+function isNoCachePath(path) {
+  return NO_CACHE_PATH_PREFIXES.some(p => path.startsWith(p));
+}
 
 function getCached(url) {
   try {
@@ -181,7 +184,8 @@ async function request(method, path, body, opts = {}) {
   const isForm = body instanceof FormData;
   const sentBody = isForm ? body : (body ? translateRequestBody(path, body) : undefined);
 
-  if (finalMethod === 'GET' && !opts.noCache) {
+  const cacheable = !isNoCachePath(path);
+  if (finalMethod === 'GET' && !opts.noCache && cacheable) {
     const cached = getCached(url);
     if (cached !== undefined) return { ok: true, status: 200, json: async () => cached, data: cached };
   }
@@ -198,6 +202,12 @@ async function request(method, path, body, opts = {}) {
   };
 
   const res = await fetch(url, config);
+
+  // A successful write must invalidate the cache even when the response has
+  // no body (e.g. DELETE returning 204 with no content-type header) --
+  // otherwise a stale GET response keeps masking the change indefinitely.
+  if (res.ok && finalMethod !== 'GET') clearCache();
+
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     return { ok: res.ok, status: res.status, json: async () => null, data: null };
@@ -205,10 +215,7 @@ async function request(method, path, body, opts = {}) {
 
   const data = await res.json().catch(() => null);
   const formatted = isNodeOnly(path) ? data : translateResponseBody(path, data);
-  if (res.ok) {
-    if (finalMethod === 'GET') setCached(url, formatted);
-    else clearCache();
-  }
+  if (res.ok && finalMethod === 'GET' && cacheable) setCached(url, formatted);
   return { ok: res.ok, status: res.status, json: async () => formatted, data: formatted };
 }
 
