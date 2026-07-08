@@ -3,7 +3,11 @@
 // through getTgConfig() instead of a raw JSON.parse.
 
 export function getTgConfig() {
-  try { return JSON.parse(localStorage.getItem('tgConfig') || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem('tgConfig') || '{}');
+  } catch (e) {
+    return {};
+  }
 }
 
 // Fetches an image URL and forwards its bytes to Telegram as a sendPhoto

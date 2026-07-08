@@ -226,22 +226,23 @@ function buildLeaveTelegramMessage(perm) {
 }
 
 async function sendLeaveToTelegram(perm, btn) {
-  const tgConfig = getTgConfig();
-  if (!tgConfig.token || !tgConfig.chatId) {
-    showToast('សូមកំណត់ Telegram Bot ជាមុនសិន (ចូលទៅគណនី > ការកំណត់ Telegram Bot)', 'error');
-    return;
-  }
-  const text = buildLeaveTelegramMessage(perm);
-  const studentImage = state.students.find(s => String(s.id) === String(perm.student))?.image;
-  await withSendingSpinner(btn, async () => {
-    try {
+  try {
+    const tgConfig = getTgConfig();
+    if (!tgConfig.token || !tgConfig.chatId) {
+      showToast('សូមកំណត់ Telegram Bot ជាមុនសិន (ចូលទៅគណនី > ការកំណត់ Telegram Bot)', 'error');
+      return;
+    }
+    const text = buildLeaveTelegramMessage(perm);
+    const studentImage = state.students.find(s => String(s.id) === String(perm.student))?.image;
+    await withSendingSpinner(btn, async () => {
       const sentWithPhoto = studentImage && await sendTelegramPhoto(tgConfig, studentImage, text);
       if (!sentWithPhoto) await sendTelegramMessage(tgConfig, text);
       showToast('បានផ្ញើទៅ Telegram ដោយជោគជ័យ ✅', 'success');
-    } catch (err) {
-      showToast('មិនអាចផ្ញើ Telegram: ' + err.message, 'error');
-    }
-  });
+    });
+  } catch (err) {
+    console.error('Telegram send error:', err);
+    showToast('មិនអាចផ្ញើ Telegram: ' + err.message, 'error');
+  }
 }
 
 // Combines every leave record for one student into a single notice instead
@@ -589,16 +590,7 @@ function update() {
           <form data-role="leave-form" style="display:flex;flex-direction:column;gap:16px;">
             <div data-role="student-dropdown-wrap" style="position:relative;">${studentDropdownWrapInnerHTML()}</div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-              <div style="min-width:0;">
-                <label class="form-label">ចាប់ពី <span style="color:var(--danger);">*</span></label>
-                <input type="date" data-f="start-date" class="form-input" style="min-width:0;" value="${startDate}" />
-              </div>
-              <div style="min-width:0;">
-                <label class="form-label">ដល់ <span style="color:var(--danger);">*</span></label>
-                <input type="date" data-f="end-date" class="form-input" style="min-width:0;" value="${endDate}" />
-              </div>
-            </div>
+
 
             <div>
               <label class="form-label">មូលហេតុ <span style="color:var(--danger);">*</span></label>
