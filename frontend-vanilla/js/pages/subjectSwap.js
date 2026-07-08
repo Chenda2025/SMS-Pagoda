@@ -250,7 +250,7 @@ function handleSendRowTelegram(swap) {
 
   const msg = `----- សូមប្រគេនដំណឹង -----\nកាលបរិច្ឆេទ៖ ${realDate}\nសិក្សា៖ ${classroomName(swap.classroom)} ម៉ោង៖ ${ts ? `${formatHM(ts.start_time)} - ${formatHM(ts.end_time)}` : '...'}${amPm}\n--- មុខវិជ្ជា៖ ${subjectName(swap.original_subject)} គ្រូ៖ ${teacherName(swap.original_teacher) || '...'} ---\nប្តូរមក\n--- មុខវិជ្ជា៖ ${subjectName(swap.new_subject)} គ្រូ៖ ${teacherName(swap.new_teacher) || '...'} ---\nអាស្រ័យហេតុដូចបានប្រគេនខាងលើ សូមសមណសិស្សគ្រប់អង្គជ្រាបជាដំណឹង។`;
 
-  fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg }) })
+  fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg }) })
     .then(res => showToast(res.ok ? 'បានផ្ញើសារចូល Telegram ជោគជ័យ! 🎉' : 'បរាជ័យក្នុងការផ្ញើ សូមពិនិត្យការកំណត់ឡើងវិញ', res.ok ? 'success' : 'danger'))
     .catch(() => showToast('មានបញ្ហាភ្ជាប់ទៅកាន់ Telegram', 'danger'));
 }
@@ -302,7 +302,7 @@ async function handleSendTelegramReport() {
     fd.append('chat_id', tgConfig.chatId);
     fd.append('document', pdfBlob, `Subject_Swaps_${Date.now()}.pdf`);
     fd.append('caption', captionText);
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, { method: 'POST', body: fd });
+    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, { method: 'POST', body: fd });
     showToast(res.ok ? 'បានផ្ញើឯកសារចូល Telegram ជោគជ័យ! 🎉' : 'បរាជ័យក្នុងការផ្ញើចូល Telegram សូមពិនិត្យការកំណត់ឡើងវិញ', res.ok ? 'success' : 'danger');
   } catch {
     showToast('មានបញ្ហាភ្ជាប់ទៅកាន់ Telegram', 'danger');

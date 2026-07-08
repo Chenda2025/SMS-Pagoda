@@ -307,7 +307,7 @@ async function checkPermissionReminders() {
       reminderObj.setDate(reminderObj.getDate() - 1);
       if (localDateStr(reminderObj) !== today) continue;
 
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: buildLeaveTelegramMessage(r) })
@@ -415,7 +415,7 @@ async function checkAttendanceWarnings() {
 កាលបរិច្ឆេទ៖ ${today}
 ដូចបានប្រគេនខាងលើនេះសូមសិស្សនិមន្តមករៀនឲ្យបានទៀងទាត់។`;
 
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg }),

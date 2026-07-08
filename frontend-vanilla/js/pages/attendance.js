@@ -441,7 +441,7 @@ async function checkAndSendWarning(studentIds, appliedStatus) {
 ដូចបានប្រគេនខាងលើនេះសូមសិស្សនិមន្តមករៀនឲ្យបានទៀងទាត់។`;
 
     try {
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg })
@@ -788,7 +788,7 @@ async function checkPermissionReminders() {
 កាលបរិច្ឆេទ៖ ${fmt(today)}
 ដូចបានប្រគេនខាងលើនេះសូមសិស្សនិមន្តមករៀនវិញ។`;
 
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg })
@@ -885,7 +885,7 @@ async function checkAttendanceWarnings() {
 កាលបរិច្ឆេទ៖ ${today}
 ដូចបានប្រគេនខាងលើនេះសូមសិស្សនិមន្តមករៀនឲ្យបានទៀងទាត់។`;
 
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: msg }),
@@ -2063,7 +2063,7 @@ async function sendToTelegram() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-circle" style="width:15px;height:15px;animation:spin 1s linear infinite;"></i>'; if (window.lucide) window.lucide.createIcons(); }
 
     async function postMsg(text) {
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text })

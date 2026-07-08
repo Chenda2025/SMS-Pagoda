@@ -816,7 +816,7 @@ function toKhmerNumerals(num) {
 }
 
 function openTelegramConfigModal() {
-  const existing = JSON.parse(localStorage.getItem('tg_bot_config') || '{}');
+  const existing = JSON.parse(localStorage.getItem('tgConfig') || '{}');
 
   const wrap = document.createElement('div');
   wrap.innerHTML = `
@@ -860,7 +860,7 @@ function openTelegramConfigModal() {
       return;
     }
 
-    localStorage.setItem('tg_bot_config', JSON.stringify({ token, chatId }));
+    localStorage.setItem('tgConfig', JSON.stringify({ token, chatId }));
     showToast('បានរក្សាទុកការកំណត់ Telegram ដោយជោគជ័យ', 'success');
     handle.close();
   }
@@ -1014,7 +1014,7 @@ async function sendTelegramImage(reportEl, tgConfig) {
   formData.append('caption', buildTelegramCaption());
   formData.append('parse_mode', 'HTML');
 
-  const response = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendPhoto`, { method: 'POST', body: formData });
+  const response = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, { method: 'POST', body: formData });
   if (!response.ok) {
     const errData = await response.text();
     console.error('Telegram API Error:', errData);
@@ -1078,7 +1078,7 @@ function showExportPreviewModal(mode) {
       return;
     }
 
-    const tgConfig = JSON.parse(localStorage.getItem('tg_bot_config'));
+    const tgConfig = JSON.parse(localStorage.getItem('tgConfig'));
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'កំពុងផ្ញើ...';
     try {
@@ -1095,7 +1095,7 @@ function showExportPreviewModal(mode) {
 }
 
 function handleExportTelegram() {
-  const tgConfig = JSON.parse(localStorage.getItem('tg_bot_config'));
+  const tgConfig = JSON.parse(localStorage.getItem('tgConfig'));
   if (!tgConfig || !tgConfig.token || !tgConfig.chatId) {
     showToast('សូមកំណត់ Telegram Bot ជាមុនសិន', 'error');
     openTelegramConfigModal();

@@ -1213,7 +1213,7 @@ async function handleSendTelegramSummary() {
   try {
     const list = getFilteredStudents();
     const text = buildStudentsSummaryText(list);
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: tgConfig.chatId, text, parse_mode: 'HTML' })
@@ -1398,7 +1398,7 @@ export async function handleExport(type, list) {
       formData.append('document', blob, 'Student_Report.xlsx');
       formData.append('caption', 'របាយការណ៍បញ្ជីឈ្មោះសិស្ស (Excel)');
 
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, {
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, {
         method: 'POST',
         body: formData
       });
@@ -1431,7 +1431,7 @@ export async function handleExport(type, list) {
       formData.append('document', pdfBlob, 'Student_Report.pdf');
       formData.append('caption', 'របាយការណ៍បញ្ជីឈ្មោះសិស្ស (PDF)');
 
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, {
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, {
         method: 'POST',
         body: formData
       });
@@ -1452,7 +1452,7 @@ export async function handleExport(type, list) {
       if (blobs.length === 1) {
          formData.append('photo', blobs[0], 'Student_Report.png');
          formData.append('caption', 'របាយការណ៍បញ្ជីឈ្មោះសិស្ស');
-         const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendPhoto`, {
+         const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, {
            method: 'POST',
            body: formData
          });
@@ -1469,7 +1469,7 @@ export async function handleExport(type, list) {
          });
          formData.append('media', JSON.stringify(mediaArray));
 
-         const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMediaGroup`, {
+         const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMediaGroup`, {
            method: 'POST',
            body: formData
          });

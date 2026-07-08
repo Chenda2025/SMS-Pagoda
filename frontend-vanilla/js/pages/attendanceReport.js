@@ -228,13 +228,13 @@ async function handleSendTelegram(type = 'image') {
     const periodLabel = getPeriodLabel();
     let fd = new FormData();
     fd.append('chat_id', tgConfig.chatId);
-    let endpoint = `https://api.telegram.org/bot${tgConfig.token}/sendDocument`;
+    let endpoint = `https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`;
 
     if (type === 'image') {
       const canvas = await html2canvas(printEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: -window.scrollY, windowWidth: printEl.scrollWidth, windowHeight: printEl.scrollHeight });
       const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       fd.append('photo', imageBlob, `របាយការណ៍_វត្តមាន_${periodLabel}.png`);
-      endpoint = `https://api.telegram.org/bot${tgConfig.token}/sendPhoto`;
+      endpoint = `https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`;
     } else if (type === 'pdf') {
       const pdfBlob = await html2pdf().set({ margin: 5, filename: `របាយការណ៍_វត្តមាន_${periodLabel}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true, letterRendering: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }, pagebreak: { mode: 'css', avoid: 'tr' } }).from(printEl).output('blob');
       fd.append('document', pdfBlob, `របាយការណ៍_វត្តមាន_${periodLabel}.pdf`);

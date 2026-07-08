@@ -98,7 +98,7 @@ async function notifyRejectionOnTelegram(student, reason) {
   ].join('\n');
 
   try {
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgConfig.chatId, text }),
     });
     const data = await res.json();

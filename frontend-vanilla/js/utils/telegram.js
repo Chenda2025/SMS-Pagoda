@@ -22,10 +22,10 @@ export async function sendTelegramPhoto(tgConfig, imageUrl, caption) {
     fd.append('chat_id', tgConfig.chatId);
     fd.append('photo', blob, 'photo.jpg');
     if (caption.length <= 1024) fd.append('caption', caption);
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendPhoto`, { method: 'POST', body: fd });
+    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, { method: 'POST', body: fd });
     if (!res.ok) return false;
     if (caption.length > 1024) {
-      await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: caption }),
       });
@@ -37,7 +37,7 @@ export async function sendTelegramPhoto(tgConfig, imageUrl, caption) {
 }
 
 export async function sendTelegramMessage(tgConfig, text) {
-  const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: tgConfig.chatId, text }),
   });

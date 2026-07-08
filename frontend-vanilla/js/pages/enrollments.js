@@ -508,7 +508,7 @@ async function handleExportInner(type, enrolledList, tgConfig) {
       formData.append('document', blob, 'Enrollment_Report.xlsx');
       formData.append('caption', 'របាយការណ៍បញ្ចូលសិស្សទៅថ្នាក់ (Excel)');
 
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, {
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, {
         method: 'POST',
         body: formData
       });
@@ -539,7 +539,7 @@ async function handleExportInner(type, enrolledList, tgConfig) {
       formData.append('document', pdfBlob, 'Enrollment_Report.pdf');
       formData.append('caption', 'របាយការណ៍បញ្ចូលសិស្សទៅថ្នាក់ (PDF)');
 
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, {
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, {
         method: 'POST',
         body: formData
       });
@@ -561,7 +561,7 @@ async function handleExportInner(type, enrolledList, tgConfig) {
         if (blobs.length === 1) {
           formData.append('photo', blobs[0], 'Enrollment_Report.png');
           formData.append('caption', 'របាយការណ៍បញ្ចូលសិស្សទៅថ្នាក់');
-          const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendPhoto`, {
+          const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, {
             method: 'POST',
             body: formData
           });
@@ -578,7 +578,7 @@ async function handleExportInner(type, enrolledList, tgConfig) {
           });
           formData.append('media', JSON.stringify(mediaArray));
 
-          const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMediaGroup`, {
+          const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMediaGroup`, {
             method: 'POST',
             body: formData
           });

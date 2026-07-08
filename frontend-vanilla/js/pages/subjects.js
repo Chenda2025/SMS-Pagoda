@@ -671,7 +671,7 @@ async function sendTelegramFile({ blob, filename, isPhoto, caption, tgConfig }) 
   fd.append(isPhoto ? 'photo' : 'document', blob, filename);
   if (caption) fd.append('caption', caption);
   const endpoint = isPhoto ? 'sendPhoto' : 'sendDocument';
-  const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/${endpoint}`, { method: 'POST', body: fd });
+  const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/${endpoint}`, { method: 'POST', body: fd });
   if (!res.ok) throw new Error('telegram-send-failed');
 }
 

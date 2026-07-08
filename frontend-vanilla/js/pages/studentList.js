@@ -639,7 +639,7 @@ async function handleSendTemplate() {
     fd.append('chat_id', tgConfig.chatId);
     fd.append('document', blob, 'student_template.pdf');
     fd.append('caption', '📋 ទម្រង់បញ្ជីឈ្មោះសិស្ស');
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, { method: 'POST', body: fd });
+    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, { method: 'POST', body: fd });
     if (!res.ok) throw new Error('Telegram API Error ' + res.status);
     showToast('បានផ្ញើទម្រង់ចូល Telegram ដោយជោគជ័យ', 'success');
   } catch (err) {
@@ -703,7 +703,7 @@ async function handleExport(kind) {
       fd.append('chat_id', tgConfig.chatId);
       fd.append('document', blob, 'student_list.xlsx');
       fd.append('caption', '📋 បញ្ជីសិស្សដែលបានចុះឈ្មោះ (Excel)');
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, { method: 'POST', body: fd });
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, { method: 'POST', body: fd });
       if (!res.ok) throw new Error('Telegram API Error ' + res.status);
       showToast('បានផ្ញើ Excel ចូល Telegram ដោយជោគជ័យ', 'success');
     } catch (err) {
@@ -730,7 +730,7 @@ async function handleExport(kind) {
       fd.append('chat_id', tgConfig.chatId);
       fd.append('document', pdfBlob, 'student_list.pdf');
       fd.append('caption', '📋 បញ្ជីឈ្មោះសិស្សចុះឈ្មោះ (PDF)');
-      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendDocument`, { method: 'POST', body: fd });
+      const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendDocument`, { method: 'POST', body: fd });
       if (!res.ok) throw new Error('Telegram API Error ' + res.status);
       showToast('បានផ្ញើ PDF ចូល Telegram ដោយជោគជ័យ', 'success');
 
@@ -746,7 +746,7 @@ async function handleExport(kind) {
       if (blobs.length === 1) {
         fd.append('photo', blobs[0], 'student_list.png');
         fd.append('caption', '📋 បញ្ជីឈ្មោះសិស្សចុះឈ្មោះ');
-        const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendPhoto`, { method: 'POST', body: fd });
+        const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, { method: 'POST', body: fd });
         if (!res.ok) throw new Error('Telegram API Error ' + res.status);
       } else {
         const mediaArray = blobs.map((b, i) => {
@@ -754,7 +754,7 @@ async function handleExport(kind) {
           return { type: 'photo', media: `attach://photo${i}`, caption: i === 0 ? `📋 បញ្ជីឈ្មោះសិស្ស (${blobs.length} ទំព័រ)` : '' };
         });
         fd.append('media', JSON.stringify(mediaArray));
-        const res = await fetch(`https://api.telegram.org/bot${tgConfig.token}/sendMediaGroup`, { method: 'POST', body: fd });
+        const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMediaGroup`, { method: 'POST', body: fd });
         if (!res.ok) throw new Error('Telegram API Error ' + res.status);
       }
       showToast(`បានផ្ញើរូបភាព (${blobs.length} ទំព័រ) ចូល Telegram ជោគជ័យ`, 'success');
