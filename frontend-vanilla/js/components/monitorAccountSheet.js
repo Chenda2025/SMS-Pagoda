@@ -99,7 +99,7 @@ function openTelegramConfigModal() {
       </div>
       <div>
         <label style="display:block;margin-bottom:6px;font-weight:600;font-size:0.85rem;">ឈ្មោះវត្ត <span style="font-weight:400;color:var(--text-muted);">(បង្ហាញក្នុងសារ)</span></label>
-        <input type="text" data-f="pagodaName" class="form-input" placeholder="ឧ. វត្តបទុមវតី..." />
+        <input type="text" data-f="pagodaName" class="form-input" placeholder="ឧ. វត្តនិរោធរង្សី..." />
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid var(--border);">
         <button type="button" data-action="cancel" class="btn" style="border:1px solid var(--border);">បោះបង់</button>

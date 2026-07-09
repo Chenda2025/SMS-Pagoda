@@ -590,7 +590,16 @@ function update() {
           <form data-role="leave-form" style="display:flex;flex-direction:column;gap:16px;">
             <div data-role="student-dropdown-wrap" style="position:relative;">${studentDropdownWrapInnerHTML()}</div>
 
-
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="min-width:0;">
+                <label class="form-label">ចាប់ពី <span style="color:var(--danger);">*</span></label>
+                <input type="date" data-f="start-date" class="form-input" style="min-width:0;" value="${startDate}" />
+              </div>
+              <div style="min-width:0;">
+                <label class="form-label">ដល់ <span style="color:var(--danger);">*</span></label>
+                <input type="date" data-f="end-date" class="form-input" style="min-width:0;" value="${endDate}" />
+              </div>
+            </div>
 
             <div>
               <label class="form-label">មូលហេតុ <span style="color:var(--danger);">*</span></label>
