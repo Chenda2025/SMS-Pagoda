@@ -217,6 +217,7 @@ function buildLeaveTelegramMessage(perm) {
 ចំនួនច្បាប់ ៖ ${toKh(totalDays)} (ថ្ងៃ)
 ចាបផ្តើមថ្ងៃ៖ ${fmt(perm.start_date)} ដល់ ${fmt(perm.end_date)}
 ថ្នាក់ទី ៖ ${perm.classroom_name}
+មូលហេតុ ៖ ${perm.reason || '---'}
 វត្ត ៖ ${perm.pagoda_name}
 កុដិ ៖ ${perm.kuti_name}
 ----- ត្រូវត្រឡប់មកសិក្សាវិញ -----

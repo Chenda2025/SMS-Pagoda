@@ -1749,7 +1749,8 @@ function renderDeskView(desks, desksPerRow) {
 
     const s = en.studentData;
     let currentStatus = getEffectiveStatus(s.id, s);
-    
+    const rec = state.attendanceRecords.find(a => String(a.student) === String(s.id));
+
     const statusOpt = STATUS_OPTIONS.find(o => o.value === currentStatus);
     const stripe = statusOpt?.color || '#16a34a';
     const nameColor = statusOpt ? stripe : '#1e293b';
@@ -1909,11 +1910,12 @@ function _tgHelpers() {
 
   const activeEnrollments = state.enrollments.filter(e => !checkIsDropout(e.student, e.studentData));
   const dropoutList = state.enrollments.filter(e => checkIsDropout(e.student, e.studentData)).map(e => e.studentData);
-  
-  const total = activeEnrollments.length;
+
+  const total = state.enrollments.length;
   
   const permList = [];
   const absentList = [];
+  const lateList = [];
   const presentList = [];
 
   activeEnrollments.forEach(e => {
@@ -1922,6 +1924,8 @@ function _tgHelpers() {
       permList.push({ student: e.student });
     } else if (status === 'absent') {
       absentList.push({ student: e.student });
+    } else if (status === 'late') {
+      lateList.push({ student: e.student });
     } else {
       presentList.push({ student: e.student });
     }
@@ -1948,31 +1952,38 @@ function _tgHelpers() {
     );
     const reason = p?.reason ? p.reason : '';
 
-    let location = '';
-    if (s.kuti) {
-      const kutiObj = state.kutis.find(k => String(k.id) === String(s.kuti));
-      if (kutiObj) location = `កុដិ ${kutiObj.kuti_name}`;
-    } else if (s.current_pagoda) {
-      const pagodaObj = state.pagodas.find(pg => String(pg.id) === String(s.current_pagoda));
-      if (pagodaObj) location = pagodaObj.name;
-    }
-    
+    const kutiObj = s.kuti ? state.kutis.find(k => String(k.id) === String(s.kuti)) : null;
+
+    const pagodaId = s.current_pagoda || kutiObj?.pagoda;
+    const pagodaObj = pagodaId ? state.pagodas.find(pg => String(pg.id) === String(pagodaId)) : null;
+
     let res = name;
     if (reason) res += ` , (${reason})`;
-    if (location) res += ` , (${location})`;
+    if (pagodaObj?.name) res += ` , (${pagodaObj.name})`;
+    if (kutiObj?.name) res += ` , (កុដិ ${kutiObj.name})`;
     return res;
+  }
+
+  function nameAndLateTimeOf(record) {
+    const name = nameOf(record);
+    const rec = state.attendanceRecords.find(a => String(a.student) === String(record.student));
+    if (!rec?.late_time) return name;
+
+    const khmerNums = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+    const toKh = (num) => String(num).replace(/[0-9]/g, m => khmerNums[m]);
+    return `${name} , ${toKh(fmtTime(rec.late_time.slice(0, 5)))} នាទី`;
   }
 
   return { schedule, className, yearName, dateStr, timeStr,
            activeSession, sessionLabel, sessionIcon,
            sessionSubjects, sessionTeachers, slotSubjects,
-           total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf };
+           total, presentList, permList, absentList, lateList, dropoutList, nameOf, nameAndReasonOf, nameAndLateTimeOf };
 }
 
 function buildTelegramMessage() {
   const { className, yearName, dateStr, timeStr,
           sessionSubjects, sessionTeachers,
-          total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf } = _tgHelpers();
+          total, presentList, permList, absentList, lateList, dropoutList, nameOf, nameAndReasonOf, nameAndLateTimeOf } = _tgHelpers();
 
   function formatDashes(list, minDashes, indent) {
     let lines = list.map(item => `${indent}- ${item}`);
@@ -2007,6 +2018,8 @@ ${formatDashes(sessionTeachers, 3, '    ')}
 ✅ សមណសិស្សមករៀនសរុប ${toKh(presentList.length)} អង្គ
 ✅ សមណសិស្សសូមច្បាប់ ${toKh(permList.length)} អង្គ
 ${formatDashes(permList.map(nameAndReasonOf), 3, '     ')}
+⏰ យឺត ${toKh(lateList.length)} អង្គ
+${formatDashes(lateList.map(nameAndLateTimeOf), 3, '     ')}
 🅰️ អវត្តមាន ${toKh(absentList.length)} អង្គ
 ${formatDashes(absentList.map(nameOf), 3, '     ')}
 🩸 សមណបោះបង់ការសិក្សាចំនួន ${toKh(dropoutList.length)} អង្គ

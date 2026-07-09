@@ -12,6 +12,13 @@ import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
 
 let root = null;
 let sessionTimer = null;
+// Last session we auto-assigned from the clock (distinct from
+// state.selectedSession) so the live timer can tell "still following the
+// clock" apart from "monitor manually picked a session" -- an earlier
+// version of this timer always forced state.selectedSession to match the
+// clock, which yanked the view away if a monitor had manually clicked into
+// a different session (e.g. reviewing the morning schedule after noon).
+let autoSession = null;
 let state = {
   classrooms: [], academicYears: [], subjects: [], classSubjects: [], teachers: [],
   enrollments: [], kutis: [], pagodas: [], attendanceRecords: [], substitutions: [],
@@ -192,6 +199,27 @@ function pickDefaultSessionAndTimeSlot(preferredTimeSlot) {
   state.selectedTimeSlot = preferredValid
     ? preferredTimeSlot
     : getCurrentTimeSlotId(sessionSlots.length > 0 ? sessionSlots : schedule);
+}
+
+// Keeps the view following morning/afternoon live while the page stays
+// open, so a monitor who leaves the tab open past noon sees the morning
+// highlights clear and the afternoon list ready to mark without reloading.
+// Only acts on the noon/midnight edge, and only while state.selectedSession
+// still matches the last auto-assigned value -- if the monitor has since
+// clicked into a different session by hand, this leaves it alone.
+function startSessionTimer() {
+  clearInterval(sessionTimer);
+  autoSession = state.selectedSession;
+  sessionTimer = setInterval(() => {
+    const now = getCurrentSession();
+    if (now !== autoSession) {
+      if (state.selectedSession === autoSession) {
+        pickDefaultSessionAndTimeSlot(state.selectedTimeSlot);
+        fetchAttendanceData();
+      }
+      autoSession = now;
+    }
+  }, 30000);
 }
 
 const STATUS_OPTIONS = [
@@ -1403,10 +1431,11 @@ function _tgHelpers() {
   const activeEnrollments = state.enrollments.filter(e => !checkIsDropout(e.student, e.studentData));
   const dropoutList = state.enrollments.filter(e => checkIsDropout(e.student, e.studentData)).map(e => e.studentData);
 
-  const total = activeEnrollments.length;
+  const total = state.enrollments.length;
 
   const permList = [];
   const absentList = [];
+  const lateList = [];
   const presentList = [];
 
   activeEnrollments.forEach(e => {
@@ -1415,6 +1444,8 @@ function _tgHelpers() {
       permList.push({ student: e.student });
     } else if (status === 'absent') {
       absentList.push({ student: e.student });
+    } else if (status === 'late') {
+      lateList.push({ student: e.student });
     } else {
       presentList.push({ student: e.student });
     }
@@ -1441,33 +1472,40 @@ function _tgHelpers() {
     );
     const reason = p?.reason ? p.reason : '';
 
-    let location = '';
-    if (s.kuti) {
-      const kutiObj = state.kutis.find(k => String(k.id) === String(s.kuti));
-      if (kutiObj) location = `កុដិ ${kutiObj.kuti_name}`;
-    } else if (s.current_pagoda) {
-      const pagodaObj = state.pagodas.find(pg => String(pg.id) === String(s.current_pagoda));
-      if (pagodaObj) location = pagodaObj.name;
-    }
+    const kutiObj = s.kuti ? state.kutis.find(k => String(k.id) === String(s.kuti)) : null;
+
+    const pagodaId = s.current_pagoda || kutiObj?.pagoda;
+    const pagodaObj = pagodaId ? state.pagodas.find(pg => String(pg.id) === String(pagodaId)) : null;
 
     let res = name;
     if (reason) res += ` , (${reason})`;
-    if (location) res += ` , (${location})`;
+    if (pagodaObj?.name) res += ` , (${pagodaObj.name})`;
+    if (kutiObj?.name) res += ` , (កុដិ ${kutiObj.name})`;
     return res;
+  }
+
+  function nameAndLateTimeOf(record) {
+    const name = nameOf(record);
+    const rec = state.attendanceRecords.find(a => String(a.student) === String(record.student));
+    if (!rec?.late_time) return name;
+
+    const khmerNums = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+    const toKh = (num) => String(num).replace(/[0-9]/g, m => khmerNums[m]);
+    return `${name} , ${toKh(fmtTime(rec.late_time.slice(0, 5)))} នាទី`;
   }
 
   return {
     schedule, className, yearName, dateStr, timeStr,
     activeSession, sessionLabel, sessionIcon,
     sessionSubjects, sessionTeachers, slotSubjects,
-    total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf
+    total, presentList, permList, absentList, lateList, dropoutList, nameOf, nameAndReasonOf, nameAndLateTimeOf
   };
 }
 
 function buildTelegramMessage() {
   const { className, yearName, dateStr, timeStr,
     sessionSubjects, sessionTeachers,
-    total, presentList, permList, absentList, dropoutList, nameOf, nameAndReasonOf } = _tgHelpers();
+    total, presentList, permList, absentList, lateList, dropoutList, nameOf, nameAndReasonOf, nameAndLateTimeOf } = _tgHelpers();
 
   function formatDashes(list, minDashes, indent) {
     let lines = list.map(item => `${indent}- ${item}`);
@@ -1502,6 +1540,8 @@ ${formatDashes(sessionTeachers, 3, '    ')}
 ✅ សមណសិស្សមករៀនសរុប ${toKh(presentList.length)} អង្គ
 ✅ សមណសិស្សសូមច្បាប់ ${toKh(permList.length)} អង្គ
 ${formatDashes(permList.map(nameAndReasonOf), 3, '     ')}
+⏰ យឺត ${toKh(lateList.length)} អង្គ
+${formatDashes(lateList.map(nameAndLateTimeOf), 3, '     ')}
 🅰️ អវត្តមាន ${toKh(absentList.length)} អង្គ
 ${formatDashes(absentList.map(nameOf), 3, '     ')}
 🩸 សមណបោះបង់ការសិក្សាចំនួន ${toKh(dropoutList.length)} អង្គ
@@ -1572,32 +1612,6 @@ async function saveReportDaily(messageText) {
   }
 }
 
-// After a report is sent, absent/late/single-day-permission markings are
-// specific to the session just reported and should reset so the next
-// session starts clean. Dropouts and multi-day permissions are ongoing
-// states, not per-session markings, so they're left untouched.
-function getStudentsToResetAfterReport() {
-  const ids = [];
-  state.enrollments.forEach(en => {
-    const sid = en.student;
-    const sData = en.studentData;
-    if (checkIsDropout(sid, sData)) return;
-    const status = getEffectiveStatus(sid, sData);
-    if (status === 'absent' || status === 'late') {
-      ids.push(sid);
-    } else if (status === 'permission') {
-      const activePerm = (state.multiplePermissions || []).find(p =>
-        String(p.student) === String(sid) &&
-        p.start_date <= state.selectedDate && p.end_date >= state.selectedDate
-      );
-      if (activePerm && activePerm.start_date === activePerm.end_date) {
-        ids.push(sid);
-      }
-    }
-  });
-  return ids;
-}
-
 async function sendToTelegram() {
   let btn = root.querySelector('[data-action="send-telegram"]');
   try {
@@ -1631,23 +1645,14 @@ async function sendToTelegram() {
     if (absentMsg) await postMsg(absentMsg);
 
     // The Telegram send already succeeded at this point -- a backend hiccup
-    // (network blip, CORS misconfig, etc.) in the follow-up save/reset steps
-    // must not make this report as "failed to send Telegram", since it
-    // didn't. Each runs in its own try/catch so a failure here only logs
-    // and surfaces a distinct, non-blocking warning.
+    // saving the report must not make this report as "failed to send
+    // Telegram", since it didn't. Runs in its own try/catch so a failure
+    // here only logs and surfaces a distinct, non-blocking warning.
     try {
       await saveReportDaily(absentMsg ? `${mainMsg}\n\n${absentMsg}` : mainMsg);
     } catch (err) {
       console.error('Failed to save daily report:', err);
       showToast('បានផ្ញើ Telegram ដោយជោគជ័យ ប៉ុន្តែមិនអាចរក្សាទុករបាយការណ៍បានទេ', 'warning');
-    }
-
-    try {
-      const idsToReset = getStudentsToResetAfterReport();
-      if (idsToReset.length > 0) await bulkSetStatus(idsToReset, 'clear');
-    } catch (err) {
-      console.error('Failed to reset attendance after report:', err);
-      showToast('បានផ្ញើ Telegram ដោយជោគជ័យ ប៉ុន្តែមិនអាចសម្អាតវត្តមានឡើងវិញបានទេ', 'warning');
     }
 
     showToast('បានផ្ញើទៅ Telegram ដោយជោគជ័យ ✅', 'success');
@@ -1682,9 +1687,7 @@ export function render(container) {
 
   injectPageStyles();
   fetchData();
-
-  clearInterval(sessionTimer);
-  // Removed aggressive auto-refresh that overwrites user's selected session
+  startSessionTimer();
 }
 
 export function destroy() {
