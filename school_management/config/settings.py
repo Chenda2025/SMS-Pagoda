@@ -37,6 +37,12 @@ ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()] 
 if os.getenv('RENDER_EXTERNAL_HOSTNAME'):
     ALLOWED_HOSTS.append(os.getenv('RENDER_EXTERNAL_HOSTNAME'))
 
+# Render terminates TLS and proxies to gunicorn over plain HTTP, so without this
+# Django thinks every request is HTTP -- request.build_absolute_uri() (used for
+# student_image URLs) then emits http:// links on an https:// page, which
+# browsers block as mixed content.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
