@@ -162,7 +162,10 @@ STORAGES = {
     },
 }
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# On Render, MEDIA_ROOT is set to a path on the mounted persistent disk
+# (see render.yaml) so uploads survive redeploys; local dev falls back to
+# a plain project-relative folder since no disk exists there.
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
