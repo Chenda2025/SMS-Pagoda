@@ -1423,11 +1423,6 @@ function _tgHelpers() {
     }
   });
 
-  // Subjects for the selected slot only (for absent detail message)
-  const slotSubjects = schedule
-    .filter(e => e.timeSlotId === String(state.selectedTimeSlot))
-    .map(e => e.subject?.subject_name || '---');
-
   const activeEnrollments = state.enrollments.filter(e => !checkIsDropout(e.student, e.studentData));
   const dropoutList = state.enrollments.filter(e => checkIsDropout(e.student, e.studentData)).map(e => e.studentData);
 
@@ -1497,7 +1492,7 @@ function _tgHelpers() {
   return {
     schedule, className, yearName, dateStr, timeStr,
     activeSession, sessionLabel, sessionIcon,
-    sessionSubjects, sessionTeachers, slotSubjects,
+    sessionSubjects, sessionTeachers,
     total, presentList, permList, absentList, lateList, dropoutList, nameOf, nameAndReasonOf, nameAndLateTimeOf
   };
 }
@@ -1551,7 +1546,7 @@ ${formatDashes(dropoutList.map(nameOf), 3, '     ')}
 }
 
 function buildAbsentDetailMessage() {
-  const { className, dateStr, timeStr, slotSubjects, absentList, nameOf } = _tgHelpers();
+  const { className, dateStr, timeStr, sessionSubjects, absentList, nameOf } = _tgHelpers();
   if (!absentList.length) return null;
 
   function formatDashes(list, minDashes, indent) {
@@ -1574,7 +1569,7 @@ function buildAbsentDetailMessage() {
 ថ្នាក់ទី៖ ${toKh(classLabel)}
 🔔 ម៉ោងៈ ${toKh(timeStr)}
 📙 មុខវិជ្ជា:
-${formatDashes(slotSubjects, 3, '    ')}
+${formatDashes(sessionSubjects, 3, '    ')}
 🅰️ អវត្តមាន ${toKh(absentList.length)} អង្គ
 ${formatDashes(absentList.map(nameOf), 6, '     ')}`;
 }
