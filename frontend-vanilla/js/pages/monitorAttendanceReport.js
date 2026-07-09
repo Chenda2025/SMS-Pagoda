@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { getUser } from '../auth.js';
 import { showToast } from '../components/toast.js';
 import { withFocusPreserved, onLiveInput } from '../utils/dom.js';
+import { fetchWithTimeout } from '../utils/telegram.js';
 
 function toKhmerNumerals(numStr) {
   const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
@@ -34,6 +35,7 @@ function formatDatesKhmer(datesArray) {
 }
 
 let root = null;
+let outsideClickHandler = null;
 let state = {
   classrooms: [],
   academicYears: [],
@@ -52,16 +54,15 @@ let state = {
 
 async function loadData() {
   try {
-    const [studentsRes, enrollmentsRes, reportRes, classroomsRes, subjectsRes, kutisRes] = await Promise.all([
+    const [studentsRes, enrollmentsRes, reportRes, classroomsRes, kutisRes] = await Promise.all([
       api.get('/api/students/list/'),
       api.get('/api/students/enrollments/'),
       api.get('/api/attendance/attendance/report-data/'),
       api.get('/api/classrooms/'),
-      api.get('/api/subjects/'),
       api.get('/api/kutis/'),
     ]);
-    const [studentsData, enrollmentsData, reportData, classroomsData, subjectsData, kutisData] =
-      [studentsRes.data, enrollmentsRes.data, reportRes.data, classroomsRes.data, subjectsRes.data, kutisRes.data];
+    const [studentsData, enrollmentsData, reportData, classroomsData, kutisData] =
+      [studentsRes.data, enrollmentsRes.data, reportRes.data, classroomsRes.data, kutisRes.data];
 
     const classroomMap = {};
     classroomsData.forEach(c => { classroomMap[c.id] = c.class_name; });
@@ -69,9 +70,6 @@ async function loadData() {
     kutisData.forEach(k => { kutiMap[k.id] = k.kuti_name; });
     const enrollmentMap = {};
     enrollmentsData.forEach(e => { enrollmentMap[e.student] = { classroom: e.classroom, academicYear: e.academic_year }; });
-
-    state.classOptions = classroomsData.map(c => c.class_name).sort((a, b) => a.localeCompare(b, 'km'));
-    state.subjectOptions = subjectsData.map(s => s.subject_name);
 
     const mapped = studentsData
       .filter(s => s.status === 'active')
@@ -334,7 +332,7 @@ async function handleSendTelegram(type = 'image') {
       fd.append('document', excelBlob, `របាយការណ៍_វត្តមាន_${periodLabel}.xlsx`);
     }
 
-    const res = await fetch(endpoint, { method: 'POST', body: fd });
+    const res = await fetchWithTimeout(endpoint, { method: 'POST', body: fd });
     if (!res.ok) throw new Error('Failed to send');
     alert('ឯកសារត្រូវបានផ្ញើចូល Telegram ដោយជោគជ័យ! 🎉');
   } catch (error) {
@@ -659,27 +657,13 @@ function update() {
             ${state.showFilters ? `
               <div data-role="filter-panel" style="position:absolute;top:calc(100% + 8px);right:0;z-index:20;width:260px;background:white;border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,0.12);border:1px solid #f3f4f6;display:flex;flex-direction:column;gap:12px;">
                 <div>
-                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">ថ្នាក់</div>
-                  <select data-f="class" class="form-input" style="width:100%;">
-                    <option value="ទាំងអស់" ${state.selectedClass === 'ទាំងអស់' ? 'selected' : ''}>ទាំងអស់ថ្នាក់</option>
-                    ${state.classOptions.map(name => `<option value="${name}" ${state.selectedClass === name ? 'selected' : ''}>${name}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">មុខវិជ្ជា</div>
-                  <select data-f="subject" class="form-input" style="width:100%;">
-                    <option value="ទាំងអស់" ${state.selectedSubject === 'ទាំងអស់' ? 'selected' : ''}>គ្រប់មុខវិជ្ជា</option>
-                    ${state.subjectOptions.map(name => `<option value="${name}" ${state.selectedSubject === name ? 'selected' : ''}>${name}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
                   <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">កាលបរិច្ឆេទ</div>
                   <input type="date" data-f="report-date" value="${state.selectedReportDate}" class="form-input" style="width:100%;" />
                 </div>
                 <div>
                   <div style="font-size:11px;font-weight:bold;color:#6b7280;margin-bottom:6px;">រយៈពេលរបាយការណ៍</div>
                   <select data-f="report-type" class="form-input" style="width:100%;">
-                    ${['all', 'daily', 'monthly', 'tri1', 'tri2', 'sem1', 'sem2'].map(v => `<option value="${v}" ${state.listReportType === v ? 'selected' : ''}>${REPORT_TYPE_LABELS[v]}</option>`).join('')}
+                    ${['daily', 'monthly'].map(v => `<option value="${v}" ${state.listReportType === v ? 'selected' : ''}>${REPORT_TYPE_LABELS[v]}</option>`).join('')}
                   </select>
                 </div>
                 <div>
@@ -713,10 +697,6 @@ function update() {
         <div style="display:flex;flex-direction:column;gap:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
             <h3 style="font-size:0.95rem;font-weight:700;margin:0;color:var(--text-primary);">បញ្ជីវត្តមានសិស្ស</h3>
-            <button data-action="export-telegram" ${state.isSendingTg ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 12px;border-radius:8px;font-weight:600;background:#0ea5e9;color:#fff;border:none;cursor:${state.isSendingTg ? 'not-allowed' : 'pointer'};opacity:${state.isSendingTg ? 0.7 : 1};font-size:0.8rem;flex-shrink:0;">
-              <i data-lucide="send" style="width:14px;height:14px"></i>
-              ${state.isSendingTg ? 'កំពុងផ្ញើ...' : 'នាំចេញ/Telegram'}
-            </button>
           </div>
 
           <div style="display:flex;flex-direction:column;gap:8px;">
@@ -761,15 +741,17 @@ function update() {
 
   const searchInput = root.querySelector('[data-f="search"]');
   onLiveInput(searchInput, () => { state = { ...state, searchQuery: searchInput.value, currentPage: 1 }; withFocusPreserved(root, update); });
-  root.querySelector('[data-action="toggle-filters"]')?.addEventListener('click', () => { state = { ...state, showFilters: !state.showFilters }; update(); });
-  root.querySelector('[data-f="class"]')?.addEventListener('change', (e) => { state = { ...state, selectedClass: e.target.value, currentPage: 1 }; update(); });
-  root.querySelector('[data-f="subject"]')?.addEventListener('change', (e) => { state = { ...state, selectedSubject: e.target.value, currentPage: 1 }; update(); });
+  root.querySelector('[data-action="toggle-filters"]')?.addEventListener('click', (e) => { e.stopPropagation(); state = { ...state, showFilters: !state.showFilters }; update(); });
   root.querySelector('[data-f="report-date"]')?.addEventListener('change', (e) => { state = { ...state, selectedReportDate: e.target.value, currentPage: 1 }; update(); });
   root.querySelector('[data-f="report-type"]')?.addEventListener('change', (e) => { state = { ...state, listReportType: e.target.value, currentPage: 1 }; update(); });
   root.querySelector('[data-f="filter-status"]')?.addEventListener('change', (e) => { state = { ...state, filterStatus: e.target.value, currentPage: 1 }; update(); });
   root.querySelector('[data-action="clear-filters"]')?.addEventListener('click', handleClearFilters);
-  root.querySelector('[data-action="export-telegram"]').addEventListener('click', () => { state = { ...state, isTablePrintMode: true }; update(); });
-
+  root.querySelector('[data-role="filter-panel"]')?.addEventListener('click', (e) => e.stopPropagation());
+  if (outsideClickHandler) { document.removeEventListener('click', outsideClickHandler); outsideClickHandler = null; }
+  if (state.showFilters) {
+    outsideClickHandler = () => { state = { ...state, showFilters: false }; update(); };
+    document.addEventListener('click', outsideClickHandler, { once: true });
+  }
   root.querySelectorAll('[data-action="toggle-daily-status-menu"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -803,9 +785,12 @@ function update() {
 
 export function render(container) {
   root = container;
-  state = { studentDetails: [], isLoading: true, classOptions: [], subjectOptions: [], listReportType: 'daily', filterStatus: 'all', isTablePrintMode: false, selectedClass: 'ទាំងអស់', selectedReportDate: new Date().toISOString().split('T')[0], selectedSubject: 'ទាំងអស់', isSendingTg: false, currentPage: 1, itemsPerPage: 10, searchQuery: '', showFilters: false, reportStatusMenuFor: null };
+  state = { studentDetails: [], isLoading: true, listReportType: 'daily', filterStatus: 'all', isTablePrintMode: false, selectedClass: 'ទាំងអស់', selectedReportDate: new Date().toISOString().split('T')[0], selectedSubject: 'ទាំងអស់', isSendingTg: false, currentPage: 1, itemsPerPage: 10, searchQuery: '', showFilters: false, reportStatusMenuFor: null };
   update();
   loadData();
 }
 
-export function destroy() { root = null; }
+export function destroy() {
+  root = null;
+  if (outsideClickHandler) { document.removeEventListener('click', outsideClickHandler); outsideClickHandler = null; }
+}

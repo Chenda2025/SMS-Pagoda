@@ -10,6 +10,25 @@ export function getTgConfig() {
   }
 }
 
+// A stalled connection (blocked domain, dead media host, flaky mobile
+// network) never rejects on its own -- fetch() has no built-in timeout --
+// so every call here is bounded. Without this, a send button's spinner can
+// be left spinning forever with no error ever surfacing.
+const FETCH_TIMEOUT_MS = 10000;
+
+export async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('ការភ្ជាប់អុីនធឺណិតយឺតពេក សូមព្យាយាមម្តងទៀត');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Fetches an image URL and forwards its bytes to Telegram as a sendPhoto
 // upload (rather than passing the URL as the `photo` param directly) so this
 // also works when the app is served from a host Telegram's servers can't
@@ -19,17 +38,17 @@ export function getTgConfig() {
 // callers can fall back to a plain sendMessage on any failure.
 export async function sendTelegramPhoto(tgConfig, imageUrl, caption) {
   try {
-    const imgRes = await fetch(imageUrl);
+    const imgRes = await fetchWithTimeout(imageUrl);
     if (!imgRes.ok) return false;
     const blob = await imgRes.blob();
     const fd = new FormData();
     fd.append('chat_id', tgConfig.chatId);
     fd.append('photo', blob, 'photo.jpg');
     if (caption.length <= 1024) fd.append('caption', caption);
-    const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, { method: 'POST', body: fd });
+    const res = await fetchWithTimeout(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendPhoto`, { method: 'POST', body: fd });
     if (!res.ok) return false;
     if (caption.length > 1024) {
-      await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
+      await fetchWithTimeout(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: tgConfig.chatId, text: caption }),
       });
@@ -41,7 +60,7 @@ export async function sendTelegramPhoto(tgConfig, imageUrl, caption) {
 }
 
 export async function sendTelegramMessage(tgConfig, text) {
-  const res = await fetch(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
+  const res = await fetchWithTimeout(`https://api.telegram.org/bot${tgConfig.token.replace(/^bot/i, "")}/sendMessage`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: tgConfig.chatId, text }),
   });

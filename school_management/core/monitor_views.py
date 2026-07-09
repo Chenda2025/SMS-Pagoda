@@ -4,7 +4,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from students.models import Enrollments
+from students.models import Enrollments, MultiplePermission
 from attendance.models import Attendance
 
 @api_view(['GET'])
@@ -15,14 +15,27 @@ def monitor_summary(request):
         return Response({'error': 'classroom_id required'}, status=status.HTTP_400_BAD_REQUEST)
 
     today = datetime.date.today()
-    students_count = Enrollments.objects.filter(classroom_id=classroom_id, academic_year__is_current=True).count()
-    
-    # Simple attendance stat for today
-    today_attendance = Attendance.objects.filter(classroom_id=classroom_id, attendance_date=today)
-    on_leave = today_attendance.filter(status='permission').count()
-    present = today_attendance.filter(status='present').count()
-    total_att = today_attendance.count()
-    attendance_rate = int((present / total_att * 100)) if total_att > 0 else None
+    student_ids = list(Enrollments.objects.filter(
+        classroom_id=classroom_id, academic_year__is_current=True
+    ).values_list('student_id', flat=True))
+    students_count = len(student_ids)
+
+    # A student with no attendance row for a day is considered present --
+    # only exceptions (absent/permission/late) get rows, matching the
+    # convention the attendance and student-list pages already use. Counting
+    # explicit status='present' rows (as before) always undercounts since
+    # those rows are essentially never created.
+    absent_today = Attendance.objects.filter(
+        student_id__in=student_ids, attendance_date=today, status='absent'
+    ).values('student_id').distinct().count()
+    attendance_rate = round((students_count - absent_today) / students_count * 100) if students_count > 0 else None
+
+    # Multi-day leave requests (the monitor's "សុំច្បាប់" feature) are stored
+    # in MultiplePermission, not as Attendance rows, so leave count must be
+    # read from there rather than Attendance status='permission'.
+    on_leave = MultiplePermission.objects.filter(
+        student_id__in=student_ids, start_date__lte=today, end_date__gte=today
+    ).values('student_id').distinct().count()
 
     return Response({
         'total_students': students_count,

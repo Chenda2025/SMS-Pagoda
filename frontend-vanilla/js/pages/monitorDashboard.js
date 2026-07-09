@@ -9,6 +9,40 @@ import { openMonitorAccountSheet } from '../components/monitorAccountSheet.js';
 let root = null;
 let state = { summary: null, loadingSummary: true };
 
+// Persists the dashboard summary (attendance rate, leave count) to
+// localStorage so re-opening the app -- even after fully closing the
+// browser -- renders instantly from disk instead of waiting on a fetch.
+// Unlike api.js's generic cache (which deliberately skips /api/monitor/
+// since that data is mutated by other devices), this cache is intentionally
+// long-lived: the tradeoff here is explicit -- data can go stale for up to a
+// day, or until the monitor taps "ធ្វើឲ្យទាន់សម័យ" (refresh) themselves.
+const SUMMARY_CACHE_PREFIX = 'monitorSummaryCache:';
+const SUMMARY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function getCachedSummary(classroomId) {
+  try {
+    const raw = localStorage.getItem(SUMMARY_CACHE_PREFIX + classroomId);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > SUMMARY_CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedSummary(classroomId, data) {
+  try {
+    localStorage.setItem(SUMMARY_CACHE_PREFIX + classroomId, JSON.stringify({ data, ts: Date.now() }));
+  } catch {
+    // localStorage full or unavailable (e.g. private browsing) -- skip caching.
+  }
+}
+
+function clearCachedSummary(classroomId) {
+  try { localStorage.removeItem(SUMMARY_CACHE_PREFIX + classroomId); } catch {}
+}
+
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return { text: 'អរុណសួស្តី', icon: '🌅' };
@@ -16,17 +50,36 @@ function getGreeting() {
   return { text: 'សាយណ្ហសួស្តី', icon: '🌙' };
 }
 
-async function loadSummary() {
+async function loadSummary(forceRefresh = false) {
   const monitorInfo = getUser()?.monitorInfo || {};
   if (!monitorInfo.classroom_id) { state = { ...state, loadingSummary: false }; update(); return; }
+
+  if (!forceRefresh) {
+    const cached = getCachedSummary(monitorInfo.classroom_id);
+    if (cached) {
+      state = { ...state, summary: cached, loadingSummary: false };
+      update();
+      return;
+    }
+  } else {
+    clearCachedSummary(monitorInfo.classroom_id);
+    state = { ...state, loadingSummary: true };
+    update();
+  }
+
   try {
-    const res = await api.get(`/api/monitor/summary?classroom_id=${monitorInfo.classroom_id}`);
+    const res = await api.get(`/api/monitor/summary?classroom_id=${monitorInfo.classroom_id}`, { noCache: true });
     state = { ...state, summary: res.data };
+    setCachedSummary(monitorInfo.classroom_id, res.data);
   } catch {
     state = { ...state, summary: null };
   }
   state = { ...state, loadingSummary: false };
   update();
+}
+
+function handleRefreshSummary() {
+  loadSummary(true);
 }
 
 function update() {
@@ -79,6 +132,11 @@ function update() {
         </div>
 
         <div style="padding:20px 20px 0;">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+            <button data-action="refresh-summary" ${loadingSummary ? 'disabled' : ''} title="ធ្វើឲ្យទាន់សម័យ" style="display:flex;align-items:center;gap:5px;background:none;border:none;color:#6b7280;font-size:11px;font-weight:bold;cursor:${loadingSummary ? 'not-allowed' : 'pointer'};opacity:${loadingSummary ? 0.6 : 1};padding:2px 4px;font-family:inherit;">
+              <i data-lucide="refresh-cw" style="width:12px;height:12px;${loadingSummary ? 'animation:spin 1s linear infinite;' : ''}"></i> ធ្វើឲ្យទាន់សម័យ
+            </button>
+          </div>
           <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;">
             ${stats.map(s => `
               <div style="background-color:white;border-radius:16px;padding:14px 8px;text-align:center;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
@@ -107,6 +165,7 @@ function update() {
   `;
 
   root.querySelectorAll('[data-nav]').forEach(card => card.addEventListener('click', () => navigate(card.dataset.nav)));
+  root.querySelector('[data-action="refresh-summary"]')?.addEventListener('click', handleRefreshSummary);
   const bottomNavMount = root.querySelector('[data-role="bottom-nav-mount"]');
   const bottomNav = createMonitorBottomNav({ active: 'home', onAccountClick: () => openMonitorAccountSheet() });
   bottomNavMount.replaceWith(bottomNav.el);
