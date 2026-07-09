@@ -3,7 +3,7 @@
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
 import mockData from '../data/scheduleStructure.json';
 import { getUser } from '../auth.js';
-import { apiOrigin } from '../api.js';
+import { api } from '../api.js';
 import { createMonitorBottomNav } from '../components/monitorBottomNav.js';
 import { openMonitorAccountSheet } from '../components/monitorAccountSheet.js';
 
@@ -58,8 +58,8 @@ function getFixedClass() { return getUser()?.monitorInfo?.classroom_name || mock
 async function loadAllClassroomsAndSchedule() {
   state.allClassrooms = [];
   try {
-    const res = await fetch(`${apiOrigin()}/api/core/classrooms/`);
-    state.allClassrooms = await res.json();
+    const res = await api.get('/api/core/classrooms/');
+    state.allClassrooms = res.data || [];
   } catch (err) {
     console.error('Error fetching all classrooms', err);
   }
@@ -69,12 +69,8 @@ async function loadAllClassroomsAndSchedule() {
 async function loadSubstitutions() {
   const date = getDateForSelectedDay(state.selectedDay);
   try {
-    const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/?classroom_name=${encodeURIComponent(state.selectedClass)}&date=${date}`);
-    if (res.ok) {
-      state.substitutions = await res.json();
-    } else {
-      state.substitutions = [];
-    }
+    const res = await api.get(`/api/core/schedule-substitutions/substitute/?classroom_name=${encodeURIComponent(state.selectedClass)}&date=${date}`);
+    state.substitutions = res.ok ? (res.data || []) : [];
   } catch (err) {
     state.substitutions = [];
     console.error('Failed to load substitutions', err);
@@ -103,15 +99,20 @@ async function loadSchedule() {
     const clsInfo = state.allClassrooms.find(c => c.class_name === state.selectedClass);
 
     // 2. Fetch required APIs
-    const base = apiOrigin();
-    const [subjectsRes, teachersRes, classSubjectsRes, timeSlotsRes, timetableRes, academicYearsRes] = await Promise.all([
-      fetch(`${base}/api/core/subjects/`).then(r => r.json()),
-      fetch(`${base}/api/users/teachers/`).then(r => r.json()),
-      fetch(`${base}/api/core/class-subjects/`).then(r => r.json()),
-      fetch(`${base}/api/core/time-slots/`).then(r => r.json()),
-      fetch(`${base}/api/core/timetable/`).then(r => r.json()),
-      fetch(`${base}/api/core/academic-years/`).then(r => r.json())
+    const [subjectsApiRes, teachersApiRes, classSubjectsApiRes, timeSlotsApiRes, timetableApiRes, academicYearsApiRes] = await Promise.all([
+      api.get('/api/core/subjects/'),
+      api.get('/api/users/teachers/'),
+      api.get('/api/core/class-subjects/'),
+      api.get('/api/core/time-slots/'),
+      api.get('/api/core/timetable/'),
+      api.get('/api/core/academic-years/')
     ]);
+    const subjectsRes = subjectsApiRes.data || [];
+    const teachersRes = teachersApiRes.data || [];
+    const classSubjectsRes = classSubjectsApiRes.data || [];
+    const timeSlotsRes = timeSlotsApiRes.data || [];
+    const timetableRes = timetableApiRes.data || [];
+    const academicYearsRes = academicYearsApiRes.data || [];
 
     newData.allSubjects = subjectsRes || [];
     newData.allClassSubjects = classSubjectsRes || [];
@@ -394,17 +395,12 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
       };
 
       try {
-        const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        const res = await api.post('/api/core/schedule-substitutions/substitute/', payload);
         if (res.ok) {
           closeModal();
           loadSubstitutions();
         } else {
-          const err = await res.json();
-          alert('បរាជ័យក្នុងការត្រឡប់ដើម៖ ' + (err.error || ''));
+          alert('បរាជ័យក្នុងការត្រឡប់ដើម៖ ' + (res.data?.error || ''));
         }
       } catch (err) {
         console.error(err);
@@ -429,17 +425,12 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
       };
 
       try {
-        const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        const res = await api.post('/api/core/schedule-substitutions/substitute/', payload);
         if (res.ok) {
           closeModal();
           loadSubstitutions();
         } else {
-          const err = await res.json();
-          alert('បរាជ័យក្នុងការលុប៖ ' + (err.error || ''));
+          alert('បរាជ័យក្នុងការលុប៖ ' + (res.data?.error || ''));
         }
       } catch (err) {
         console.error(err);
@@ -471,17 +462,12 @@ function renderSubstituteModal(sessionKey, slotIndex, currentSubject, isSub) {
     };
 
     try {
-      const res = await fetch(`${apiOrigin()}/api/core/schedule-substitutions/substitute/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.post('/api/core/schedule-substitutions/substitute/', payload);
       if (res.ok) {
         closeModal();
         loadSubstitutions();
       } else {
-        const err = await res.json();
-        alert('បរាជ័យក្នុងការរក្សាទុក៖ ' + (err.error || ''));
+        alert('បរាជ័យក្នុងការរក្សាទុក៖ ' + (res.data?.error || ''));
       }
     } catch (err) {
       console.error(err);

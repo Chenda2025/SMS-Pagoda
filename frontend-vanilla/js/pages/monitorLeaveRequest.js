@@ -734,6 +734,7 @@ function update() {
   root.querySelectorAll('[data-action="view-perm"]').forEach(el => el.addEventListener('click', () => { state = { ...state, viewingStudentId: el.dataset.studentId }; update(); }));
   root.querySelectorAll('[data-action="edit-perm"]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); handleEdit(permissions.find(p => p.id === Number(btn.dataset.id))); }));
   root.querySelectorAll('[data-action="delete-perm"]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); handleDelete(Number(btn.dataset.id)); }));
+  root.querySelectorAll('[data-action="send-perm"]').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); sendLeaveToTelegram(permissions.find(p => p.id === Number(btn.dataset.id)), btn); }));
   root.querySelectorAll('[data-action="close-view"]').forEach(el => el.addEventListener('click', () => { state = { ...state, viewingStudentId: null }; update(); }));
   const sendAllBtn = root.querySelector('[data-action="send-all-telegram"]');
   if (sendAllBtn) sendAllBtn.addEventListener('click', (e) => { e.stopPropagation(); if (viewingGroup) sendAllLeavesToTelegram(viewingGroup, sendAllBtn); });

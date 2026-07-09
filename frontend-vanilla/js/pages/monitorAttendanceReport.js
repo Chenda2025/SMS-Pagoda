@@ -4,7 +4,7 @@ import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { toKhmerLunarDate } from 'khmer-chhankitek-calendar';
-import { api, apiOrigin } from '../api.js';
+import { api } from '../api.js';
 import { getUser } from '../auth.js';
 import { showToast } from '../components/toast.js';
 import { withFocusPreserved, onLiveInput } from '../utils/dom.js';
@@ -52,15 +52,16 @@ let state = {
 
 async function loadData() {
   try {
-    const base = apiOrigin();
-    const [studentsData, enrollmentsData, reportData, classroomsData, subjectsData, kutisData] = await Promise.all([
-      fetch(`${base}/api/students/list/`).then(r => r.json()),
-      fetch(`${base}/api/students/enrollments/`).then(r => r.json()),
-      fetch(`${base}/api/attendance/attendance/report-data/`).then(r => r.json()),
-      fetch(`${base}/api/classrooms/`).then(r => r.json()),
-      fetch(`${base}/api/subjects/`).then(r => r.json()),
-      fetch(`${base}/api/kutis/`).then(r => r.json()),
+    const [studentsRes, enrollmentsRes, reportRes, classroomsRes, subjectsRes, kutisRes] = await Promise.all([
+      api.get('/api/students/list/'),
+      api.get('/api/students/enrollments/'),
+      api.get('/api/attendance/attendance/report-data/'),
+      api.get('/api/classrooms/'),
+      api.get('/api/subjects/'),
+      api.get('/api/kutis/'),
     ]);
+    const [studentsData, enrollmentsData, reportData, classroomsData, subjectsData, kutisData] =
+      [studentsRes.data, enrollmentsRes.data, reportRes.data, classroomsRes.data, subjectsRes.data, kutisRes.data];
 
     const classroomMap = {};
     classroomsData.forEach(c => { classroomMap[c.id] = c.class_name; });
