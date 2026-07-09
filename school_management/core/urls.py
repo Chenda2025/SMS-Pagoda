@@ -32,11 +32,13 @@ router.register(r'villages', VillagesViewSet, basename='villages')
 router.register(r'yearbook-entries', YearbookEntriesViewSet, basename='yearbook-entries')
 
 from .monitor_views import monitor_summary, monitor_students, monitor_student_attendance
+from .media_sync_views import media_upload
 
 urlpatterns = [
     path('rpc/', RPCView.as_view(), name='rpc'),
     path('monitor/summary/', monitor_summary, name='monitor-summary'),
     path('monitor/students/', monitor_students, name='monitor-students'),
     path('monitor/student-attendance/', monitor_student_attendance, name='monitor-student-attendance'),
+    path('media-sync/upload/', media_upload, name='media-sync-upload'),
     path('', include(router.urls)),
 ]
